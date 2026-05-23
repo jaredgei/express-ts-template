@@ -1,4 +1,4 @@
-import { NextFunction, Request, Response } from 'express-serve-static-core';
+import { NextFunction, Request, Response } from 'express';
 
 export default (request: Request, response: Response, next: NextFunction) => {
   const start = new Date();

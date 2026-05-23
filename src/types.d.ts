@@ -1,5 +1,3 @@
-import 'express-session';
-
 declare global {
-  type Empty = Record<PropertyKey, never>
-};
+  type Empty = Record<PropertyKey, never>;
+}

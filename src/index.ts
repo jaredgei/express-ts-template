@@ -1,4 +1,4 @@
-import { Request, Response } from 'express-serve-static-core';
+import { Request, Response } from 'express';
 import cookieParser from 'cookie-parser';
 import express from 'express';
 import { exit } from 'process';
@@ -29,7 +29,7 @@ import exampleRouter from './routes/example';
     // });
 
     // START
-    await app.listen(process.env.PORT || 8001, () => console.log(`Server is listening on port ${process.env.PORT || 8001}`));
+    app.listen(process.env.PORT || 8001, () => console.log(`Server is listening on port ${process.env.PORT || 8001}`));
   } catch (error) {
     console.error(error);
     exit(1);
