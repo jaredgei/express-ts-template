@@ -1,14 +1,21 @@
-import { NextFunction, Request, Response, RequestHandler } from 'express';
-import { validationResult } from 'express-validator';
+import { Request, Response, NextFunction } from 'express';
+import { z, ZodError } from 'zod';
 
-export const checkValidation = (request: Request, response: Response, next: NextFunction) => {
-  const errors = validationResult(request);
-  if (!errors.isEmpty()) {
-    return response.status(400).json({ errors: errors.array()[0].msg });
+const validateType = (key: 'body' | 'query' | 'params', schema: z.ZodObject<z.ZodRawShape>) => (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const parsed = schema.parse(req[key]);
+    if (key === 'body') {
+      req.body = parsed;
+    } else {
+      Object.defineProperty(req, key, { value: parsed, writable: true, configurable: true, enumerable: true });
+    }
+    next();
+  } catch (error) {
+    if (error instanceof ZodError) return res.status(400).json({ errors: error.issues[0].message });
+    next(error);
   }
-  next();
 };
 
-export default (rules: RequestHandler | RequestHandler[]): RequestHandler[] => {
-  return Array.isArray(rules) ? [...rules, checkValidation] : [rules, checkValidation];
-};
+export const validateBody = (schema: z.ZodObject<z.ZodRawShape>) => validateType('body', schema);
+export const validateQuery = (schema: z.ZodObject<z.ZodRawShape>) => validateType('query', schema);
+export const validateParams = (schema: z.ZodObject<z.ZodRawShape>) => validateType('params', schema);

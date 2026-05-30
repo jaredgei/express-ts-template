@@ -1,10 +1,12 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import cookieParser from 'cookie-parser';
 import express from 'express';
 import { exit } from 'process';
 
 import logger from './middleware/logger';
 import exampleRouter from './routes/example';
+import { mountRouter } from './utils/route';
+import { serveSwaggerDocs } from './utils/swagger';
 
 (async () => {
   try {
@@ -17,16 +19,23 @@ import exampleRouter from './routes/example';
     app.use(logger);
 
     // API ROUTES
-    app.use('/api/example', exampleRouter);
+    mountRouter(app, '/api/example', exampleRouter);
+
+    // SWAGGER DOCS (Only in Non-Production Environments)
+    if (process.env.NODE_ENV !== 'production') {
+      serveSwaggerDocs(app);
+      console.log('Swagger documentation available at /docs');
+    }
 
     app.use('/', (_: Request, response: Response) => response.send('Hello World!'));
 
-    // UI
-    // if (!process.env.FRONTEND_DIR) throw new Error('FRONTEND_DIR is not defined');
-    // app.use(express.static(process.env.FRONTEND_DIR));
-    // app.get('/*', (_: Request, response: Response) => {
-    //   response.sendFile(path.join(process.env.FRONTEND_DIR!, 'index.html'));
-    // });
+    // GLOBAL ERROR HANDLER (Ensures JSON responses instead of default Express HTML error pages)
+    app.use((error: Error & { status?: number }, _req: Request, res: Response, _next: NextFunction) => {
+      console.error('Global Error Caught:', error);
+      res.status(error.status || 500).json({
+        errors: error.message || 'Internal Server Error',
+      });
+    });
 
     // START
     app.listen(process.env.PORT || 8001, () => console.log(`Server is listening on port ${process.env.PORT || 8001}`));

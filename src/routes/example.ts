@@ -1,11 +1,8 @@
-import { Router } from 'express';
-import { exampleHandler, exampleValidator } from '../handlers/example';
-import validate from '../middleware/validator';
+import { exampleHandler, exampleQuerySchema, exampleResponseSchema } from '../handlers/example';
+import { createRouter } from '../utils/route';
 
-// /api/example
-const router = Router();
+const router = createRouter(); // /api/example
 
-// GET
-router.get('/', validate(exampleValidator), exampleHandler); // /api/example
+router.get('/', { query: exampleQuerySchema, response: exampleResponseSchema }, exampleHandler);
 
 export default router;
