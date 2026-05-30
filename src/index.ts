@@ -13,10 +13,20 @@ import { serveSwaggerDocs } from './utils/swagger';
     // INIT
     const app = express();
 
-    // MIDDLEWARE
+    // MIDDLEWARE & LOGGING
     app.use(express.json());
     app.use(cookieParser());
     app.use(logger);
+
+    // SECURITY HEADERS
+    app.use((_req: Request, res: Response, next: NextFunction) => {
+      res.removeHeader('X-Powered-By');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+      res.setHeader('X-XSS-Protection', '1; mode=block');
+      res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+      next();
+    });
 
     // API ROUTES
     mountRouter(app, '/api/example', exampleRouter);

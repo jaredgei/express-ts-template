@@ -1,12 +1,22 @@
 import { NextFunction, Request, Response } from 'express';
 
-export default (request: Request, response: Response, next: NextFunction) => {
-  const start = new Date();
-  console.log(`${start.toUTCString()} ${request.ip} ${request.method} ${request.url}`);
-  response.on('finish', () => {
-    const end = new Date();
-    const duration = end.getTime() - start.getTime();
-    console.log(`${end.toUTCString()} ${response.statusCode} ${response.statusMessage} elapsed: ${duration}`);
+export default (req: Request, res: Response, next: NextFunction) => {
+  const start = performance.now();
+
+  res.on('finish', () => {
+    const elapsed = performance.now() - start;
+
+    const log = {
+      timestamp: new Date().toISOString(),
+      ip: req.ip,
+      method: req.method,
+      url: req.originalUrl || req.url,
+      status: res.statusCode,
+      elapsedMs: parseFloat(elapsed.toFixed(3)),
+    };
+
+    console.log(JSON.stringify(log));
   });
+
   next();
 };
