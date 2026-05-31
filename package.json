@@ -1,11 +1,11 @@
 {
   "name": "express-ts",
   "version": "1.0.0",
-  "main": "index.js",
+  "main": "dist/index.js",
   "scripts": {
     "lint": "eslint src",
     "build": "tsc --build",
-    "start": "node index.js",
+    "start": "node dist/index.js",
     "dev": "nodemon --exec node -r ts-node/register --env-file=.env ./src/index.ts",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.ts\"",
