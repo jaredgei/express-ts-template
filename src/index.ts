@@ -35,7 +35,7 @@ import { serveSwaggerDocs } from './utils/swagger';
 
     // SWAGGER DOCS (Only in Non-Production Environments)
     if (process.env.NODE_ENV !== 'production') {
-      serveSwaggerDocs(app);
+      await serveSwaggerDocs(app);
       console.log('Swagger documentation available at /docs');
     }
 

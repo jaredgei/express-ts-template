@@ -1,9 +1,11 @@
 import { Router } from 'express';
-import swaggerUi from 'swagger-ui-express';
-import { OpenApiGeneratorV3 } from '@asteasolutions/zod-to-openapi';
 import { registry } from './route';
 
-export const serveSwaggerDocs = (router: Router) => {
+export const serveSwaggerDocs = async (router: Router) => {
+  // Lazy imports so swagger doesn't need to be required as a production dependency
+  const swaggerUi = await import('swagger-ui-express');
+  const { OpenApiGeneratorV3 } = await import('@asteasolutions/zod-to-openapi');
+
   const generator = new OpenApiGeneratorV3(registry.definitions);
 
   const swaggerDocument = generator.generateDocument({
@@ -21,5 +23,5 @@ export const serveSwaggerDocs = (router: Router) => {
     ],
   });
 
-  router.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+  router.use('/docs', swaggerUi.default.serve, swaggerUi.default.setup(swaggerDocument));
 };
