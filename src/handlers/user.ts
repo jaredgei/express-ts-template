@@ -57,10 +57,7 @@ export const getUsersResponseSchema = z.object({
 // --- HANDLERS ---
 
 // GET /api/users
-export const getUsersHandler = async (_request: Request, response: Response) => {
-  const allUsers = await db.select().from(users);
-  response.status(200).json({ users: allUsers });
-};
+export const getUsersHandler = async (_req: Request, res: Response) => res.status(200).json({ users: await db.select().from(users) });
 
 // POST /api/users/register
 export const registerHandler = async (request: Request, response: Response) => {
@@ -92,68 +89,44 @@ export const registerHandler = async (request: Request, response: Response) => {
 };
 
 // POST /api/users/login
-export const loginHandler = async (request: Request, response: Response) => {
-  const { email, password } = request.body;
+export const loginHandler = async (req: Request, res: Response) => {
+  const { email, password } = req.body;
 
-  // Retrieve user
   const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  if (!user || !(await verifyPassword(password, user.passwordHash))) return res.status(401).json({ errors: 'Invalid email or password' });
 
-  if (!user) return response.status(401).json({ errors: 'Invalid email or password' });
-
-  // Verify password
-  const isValidPassword = await verifyPassword(password, user.passwordHash);
-  if (!isValidPassword) return response.status(401).json({ errors: 'Invalid email or password' });
-
-  // Generate tokens
   const payload = { userId: user.id, email: user.email };
   const accessToken = signJwt(payload, false);
   const refreshToken = signJwt(payload, true);
 
-  // Set the HTTP-Only cookie for refresh token
-  response.cookie('refreshToken', refreshToken, cookieOptions);
-
-  // Strip passwordHash before response
+  res.cookie('refreshToken', refreshToken, cookieOptions);
   const { passwordHash: _, ...publicUser } = user;
 
-  response.status(200).json({
+  res.status(200).json({
     user: publicUser,
     accessToken,
   });
 };
 
 // POST /api/users/refresh
-export const refreshHandler = async (request: Request, response: Response) => {
-  // Read token from secure cookies
-  const refreshToken = request.cookies?.refreshToken;
-  if (!refreshToken) return response.status(401).json({ errors: 'Refresh token not found in cookies' });
-  const payload = verifyJwt(refreshToken, true);
-  if (!payload) return response.status(401).json({ errors: 'Invalid or expired refresh token' });
+export const refreshHandler = async (req: Request, res: Response) => {
+  const token = req.cookies?.refreshToken;
+  const payload = token ? verifyJwt(token, true) : null;
+  if (!payload) return res.status(401).json({ errors: token ? 'Invalid or expired refresh token' : 'Refresh token not found in cookies' });
 
-  // Issue new access token
-  const newAccessToken = signJwt({ userId: payload.userId, email: payload.email }, false);
-
-  response.status(200).json({ accessToken: newAccessToken });
+  res.status(200).json({ accessToken: signJwt({ userId: payload.userId, email: payload.email }, false) });
 };
 
 // POST /api/users/logout
-export const logoutHandler = async (_request: Request, response: Response) => {
-  // Clear the secure cookie
-  response.clearCookie('refreshToken', {
-    httpOnly: cookieOptions.httpOnly,
-    secure: cookieOptions.secure,
-    sameSite: cookieOptions.sameSite,
-  });
-
-  response.status(200).json({
-    success: true,
-  });
+export const logoutHandler = async (_req: Request, res: Response) => {
+  res.clearCookie('refreshToken', { httpOnly: cookieOptions.httpOnly, secure: cookieOptions.secure, sameSite: cookieOptions.sameSite });
+  res.status(200).json({ success: true });
 };
 
 // GET /api/users/me (Authenticated profile fetch)
-export const getMeHandler = async (request: AuthenticatedRequest, response: Response) => {
-  if (!request.user) return response.status(401).json({ errors: 'Unauthorized' });
-  const [user] = await db.select().from(users).where(eq(users.id, request.user.userId)).limit(1);
-  if (!user) return response.status(404).json({ errors: 'User not found' });
+export const getMeHandler = async (req: AuthenticatedRequest, res: Response) => {
+  const [user] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
+  if (!user) return res.status(404).json({ errors: 'User not found' });
   const { passwordHash: _, ...publicUser } = user;
-  response.status(200).json({ user: publicUser });
+  res.status(200).json({ user: publicUser });
 };

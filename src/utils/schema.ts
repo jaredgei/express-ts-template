@@ -1,4 +1,4 @@
-import { pgTable } from 'drizzle-orm/pg-core';
+import { pgTable, PgColumnBuilderBase } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { uuid, timestamp } from 'drizzle-orm/pg-core';
 
@@ -21,7 +21,7 @@ export const baseColumns = {
  * - `selectSchema` (Zod schema for select queries)
  * - `insertSchema` (Zod schema for inserts)
  */
-export function createModel<TName extends string, TColumns extends Record<string, any>>(name: TName, columns: TColumns) {
+export function createModel<TName extends string, TColumns extends Record<string, PgColumnBuilderBase>>(name: TName, columns: TColumns) {
   const table = pgTable(name, {
     ...baseColumns,
     ...columns,

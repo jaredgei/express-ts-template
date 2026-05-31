@@ -1,9 +1,37 @@
 import express, { Router, RequestHandler } from 'express';
-import { OpenAPIRegistry, RouteConfig } from '@asteasolutions/zod-to-openapi';
+import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 import { validateBody, validateQuery, validateParams } from '../middleware/validator';
 
-export const registry = new OpenAPIRegistry();
+export type SimpleDefinition = { type: 'component'; componentType: string; name: string; component: unknown } | { type: 'route'; route: RouteConfig };
+
+class SimpleRegistry {
+  public readonly definitions: SimpleDefinition[] = [];
+
+  registerComponent(type: string, name: string, component: unknown) {
+    this.definitions.push({
+      type: 'component',
+      componentType: type,
+      name,
+      component,
+    });
+    return {
+      name,
+      ref: {
+        $ref: `#/components/${type}/${name}`,
+      },
+    };
+  }
+
+  registerPath(route: RouteConfig) {
+    this.definitions.push({
+      type: 'route',
+      route,
+    });
+  }
+}
+
+export const registry = new SimpleRegistry();
 
 // Register global security scheme for Swagger / OpenAPI UI
 registry.registerComponent('securitySchemes', 'bearerAuth', {

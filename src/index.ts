@@ -7,7 +7,6 @@ import logger from './middleware/logger';
 import userRouter from './routes/user';
 import { testConnection } from './utils/database';
 import { mountRouter } from './utils/route';
-import { serveSwaggerDocs } from './utils/swagger';
 
 (async () => {
   try {
@@ -35,6 +34,7 @@ import { serveSwaggerDocs } from './utils/swagger';
 
     // SWAGGER DOCS (Only in Non-Production Environments)
     if (process.env.NODE_ENV !== 'production') {
+      const { serveSwaggerDocs } = await import('./utils/swagger');
       await serveSwaggerDocs(app);
       console.log('Swagger documentation available at /docs');
     }
