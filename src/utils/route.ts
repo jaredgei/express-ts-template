@@ -5,6 +5,13 @@ import { validateBody, validateQuery, validateParams } from '../middleware/valid
 
 export const registry = new OpenAPIRegistry();
 
+// Register global security scheme for Swagger / OpenAPI UI
+registry.registerComponent('securitySchemes', 'bearerAuth', {
+  type: 'http',
+  scheme: 'bearer',
+  bearerFormat: 'JWT',
+});
+
 type RouteDefinition = {
   method: 'get' | 'post' | 'put' | 'delete' | 'patch';
   path: string;
@@ -17,6 +24,7 @@ type RouteDefinition = {
   };
   responses: Record<number, { description: string; schema?: z.ZodObject<z.ZodRawShape> }>;
   handler: RequestHandler | RequestHandler[];
+  security?: boolean;
 };
 
 export type RouteShorthand = {
@@ -26,6 +34,7 @@ export type RouteShorthand = {
   response?: z.ZodObject<z.ZodRawShape>;
   summary?: string;
   description?: string;
+  security?: boolean;
 };
 
 export type CustomRouter = {
@@ -79,6 +88,7 @@ export const createRouter = (): CustomRouter => {
           schema: schema.response,
         },
       },
+      security: schema.security,
       handler: handlers,
     });
 
@@ -100,7 +110,7 @@ export const mountRouter = (app: express.IRouter, prefix: string, customRouter: 
   app.use(prefix, customRouter.expressRouter);
 
   for (const route of customRouter.routes) {
-    const { method, path, request, responses, summary, description } = route;
+    const { method, path, request, responses, summary, description, security } = route;
     const combinedPath = `${prefix.replace(/\/$/, '')}/${path.replace(/^\//, '')}`.replace(/\/$/, '') || '/';
 
     const openApiRequest: RouteConfig['request'] = {};
@@ -123,6 +133,7 @@ export const mountRouter = (app: express.IRouter, prefix: string, customRouter: 
       description,
       request: openApiRequest,
       responses: openApiResponses,
+      security: security ? [{ bearerAuth: [] }] : undefined,
     });
   }
 };
