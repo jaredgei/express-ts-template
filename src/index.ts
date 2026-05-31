@@ -4,13 +4,15 @@ import express from 'express';
 import { exit } from 'process';
 
 import logger from './middleware/logger';
-import exampleRouter from './routes/example';
+import userRouter from './routes/user';
+import { testConnection } from './utils/database';
 import { mountRouter } from './utils/route';
 import { serveSwaggerDocs } from './utils/swagger';
 
 (async () => {
   try {
     // INIT
+    await testConnection();
     const app = express();
 
     // MIDDLEWARE & LOGGING
@@ -29,7 +31,7 @@ import { serveSwaggerDocs } from './utils/swagger';
     });
 
     // API ROUTES
-    mountRouter(app, '/api/example', exampleRouter);
+    mountRouter(app, '/api/users', userRouter);
 
     // SWAGGER DOCS (Only in Non-Production Environments)
     if (process.env.NODE_ENV !== 'production') {
