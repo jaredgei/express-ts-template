@@ -5,7 +5,7 @@ import { validateBody, validateQuery, validateParams } from '../middleware/valid
 
 export const registry = new OpenAPIRegistry();
 
-interface RouteDefinition {
+type RouteDefinition = {
   method: 'get' | 'post' | 'put' | 'delete' | 'patch';
   path: string;
   summary?: string;
@@ -17,23 +17,53 @@ interface RouteDefinition {
   };
   responses: Record<number, { description: string; schema?: z.ZodObject<z.ZodRawShape> }>;
   handler: RequestHandler | RequestHandler[];
-}
+};
 
-export interface RouteShorthand {
+export type RouteShorthand = {
   query?: z.ZodObject<z.ZodRawShape>;
   body?: z.ZodObject<z.ZodRawShape>;
   params?: z.ZodObject<z.ZodRawShape>;
   response?: z.ZodObject<z.ZodRawShape>;
   summary?: string;
   description?: string;
-}
+};
 
-export class CustomRouter {
-  public expressRouter = Router();
-  public routes: RouteDefinition[] = [];
+export type CustomRouter = {
+  expressRouter: Router;
+  routes: RouteDefinition[];
+  get: (path: string, schema: RouteShorthand, ...handlers: RequestHandler[]) => CustomRouter;
+  post: (path: string, schema: RouteShorthand, ...handlers: RequestHandler[]) => CustomRouter;
+  put: (path: string, schema: RouteShorthand, ...handlers: RequestHandler[]) => CustomRouter;
+  delete: (path: string, schema: RouteShorthand, ...handlers: RequestHandler[]) => CustomRouter;
+  patch: (path: string, schema: RouteShorthand, ...handlers: RequestHandler[]) => CustomRouter;
+};
 
-  private addRoute(method: RouteDefinition['method'], path: string, schema: RouteShorthand, handler: RequestHandler | RequestHandler[]) {
-    this.routes.push({
+export const createRouter = (): CustomRouter => {
+  const expressRouter = express.Router();
+  const routes: RouteDefinition[] = [];
+
+  const self: CustomRouter = {
+    expressRouter,
+    routes,
+    get(path, schema, ...handlers) {
+      return addRoute('get', path, schema, handlers);
+    },
+    post(path, schema, ...handlers) {
+      return addRoute('post', path, schema, handlers);
+    },
+    put(path, schema, ...handlers) {
+      return addRoute('put', path, schema, handlers);
+    },
+    delete(path, schema, ...handlers) {
+      return addRoute('delete', path, schema, handlers);
+    },
+    patch(path, schema, ...handlers) {
+      return addRoute('patch', path, schema, handlers);
+    },
+  };
+
+  function addRoute(method: RouteDefinition['method'], path: string, schema: RouteShorthand, handlers: RequestHandler[]) {
+    routes.push({
       method,
       path,
       summary: schema.summary || `${method.toUpperCase()} ${path}`,
@@ -49,7 +79,7 @@ export class CustomRouter {
           schema: schema.response,
         },
       },
-      handler,
+      handler: handlers,
     });
 
     const middlewares: RequestHandler[] = [];
@@ -58,32 +88,13 @@ export class CustomRouter {
     if (schema.params) middlewares.push(validateParams(schema.params));
 
     const expressPath = path.replace(/{([^}]+)}/g, ':$1');
-    const handlers = Array.isArray(handler) ? handler : [handler];
-    this.expressRouter[method](expressPath, ...middlewares, ...handlers);
+    expressRouter[method](expressPath, ...middlewares, ...handlers);
+
+    return self;
   }
 
-  public get(path: string, schema: RouteShorthand, handler: RequestHandler | RequestHandler[]) {
-    this.addRoute('get', path, schema, handler);
-  }
-
-  public post(path: string, schema: RouteShorthand, handler: RequestHandler | RequestHandler[]) {
-    this.addRoute('post', path, schema, handler);
-  }
-
-  public put(path: string, schema: RouteShorthand, handler: RequestHandler | RequestHandler[]) {
-    this.addRoute('put', path, schema, handler);
-  }
-
-  public delete(path: string, schema: RouteShorthand, handler: RequestHandler | RequestHandler[]) {
-    this.addRoute('delete', path, schema, handler);
-  }
-
-  public patch(path: string, schema: RouteShorthand, handler: RequestHandler | RequestHandler[]) {
-    this.addRoute('patch', path, schema, handler);
-  }
-}
-
-export const createRouter = () => new CustomRouter();
+  return self;
+};
 
 export const mountRouter = (app: express.IRouter, prefix: string, customRouter: CustomRouter) => {
   app.use(prefix, customRouter.expressRouter);
