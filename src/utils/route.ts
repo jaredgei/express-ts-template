@@ -1,7 +1,7 @@
 import express, { Router, RequestHandler } from 'express';
 import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
-import { validateBody, validateQuery, validateParams } from '../middleware/validator';
+import { validateBody, validateQuery, validateParams, validateResponse } from '../middleware/validator';
 
 export type SimpleDefinition = { type: 'component'; componentType: string; name: string; component: unknown } | { type: 'route'; route: RouteConfig };
 
@@ -124,6 +124,7 @@ export const createRouter = (): CustomRouter => {
     if (schema.body) middlewares.push(validateBody(schema.body));
     if (schema.query) middlewares.push(validateQuery(schema.query));
     if (schema.params) middlewares.push(validateParams(schema.params));
+    if (schema.response) middlewares.push(validateResponse(schema.response));
 
     const expressPath = path.replace(/{([^}]+)}/g, ':$1');
     expressRouter[method](expressPath, ...middlewares, ...handlers);

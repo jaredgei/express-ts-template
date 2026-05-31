@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { db } from '../utils/database';
-import { users, selectUserSchema } from '../models/user';
+import { users, selectUserSchema, User } from '../models/user';
 import { hashPassword, verifyPassword, signJwt, verifyJwt } from '../utils/auth';
 import { AuthenticatedRequest } from '../middleware/auth';
 
@@ -12,6 +12,15 @@ const cookieOptions = {
   secure: process.env.NODE_ENV === 'production',
   sameSite: 'lax' as const,
   maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+};
+
+// Helper to set refresh token cookie and return response
+const sendAuthResponse = (res: Response, statusCode: number, user: User, accessToken: string, refreshToken: string) => {
+  res.cookie('refreshToken', refreshToken, cookieOptions);
+  res.status(statusCode).json({
+    user,
+    accessToken,
+  });
 };
 
 // --- SCHEMAS ---
@@ -71,21 +80,9 @@ export const registerHandler = async (request: Request, response: Response) => {
   const passwordHash = await hashPassword(password);
   const [newUser] = await db.insert(users).values({ name, email, passwordHash }).returning();
 
-  // Generate tokens
+  // Generate tokens & respond
   const payload = { userId: newUser.id, email: newUser.email };
-  const accessToken = signJwt(payload, false);
-  const refreshToken = signJwt(payload, true);
-
-  // Set the HTTP-Only cookie for refresh token
-  response.cookie('refreshToken', refreshToken, cookieOptions);
-
-  // Strip passwordHash before response
-  const { passwordHash: _, ...publicUser } = newUser;
-
-  response.status(201).json({
-    user: publicUser,
-    accessToken,
-  });
+  sendAuthResponse(response, 201, newUser, signJwt(payload), signJwt(payload, true));
 };
 
 // POST /api/users/login
@@ -96,16 +93,7 @@ export const loginHandler = async (req: Request, res: Response) => {
   if (!user || !(await verifyPassword(password, user.passwordHash))) return res.status(401).json({ errors: 'Invalid email or password' });
 
   const payload = { userId: user.id, email: user.email };
-  const accessToken = signJwt(payload, false);
-  const refreshToken = signJwt(payload, true);
-
-  res.cookie('refreshToken', refreshToken, cookieOptions);
-  const { passwordHash: _, ...publicUser } = user;
-
-  res.status(200).json({
-    user: publicUser,
-    accessToken,
-  });
+  sendAuthResponse(res, 200, user, signJwt(payload), signJwt(payload, true));
 };
 
 // POST /api/users/refresh
@@ -127,6 +115,5 @@ export const logoutHandler = async (_req: Request, res: Response) => {
 export const getMeHandler = async (req: AuthenticatedRequest, res: Response) => {
   const [user] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
   if (!user) return res.status(404).json({ errors: 'User not found' });
-  const { passwordHash: _, ...publicUser } = user;
-  res.status(200).json({ user: publicUser });
+  res.status(200).json({ user });
 };

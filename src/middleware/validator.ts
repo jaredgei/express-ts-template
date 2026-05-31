@@ -19,3 +19,21 @@ const validateType = (key: 'body' | 'query' | 'params', schema: z.ZodObject<z.Zo
 export const validateBody = (schema: z.ZodObject<z.ZodRawShape>) => validateType('body', schema);
 export const validateQuery = (schema: z.ZodObject<z.ZodRawShape>) => validateType('query', schema);
 export const validateParams = (schema: z.ZodObject<z.ZodRawShape>) => validateType('params', schema);
+
+/**
+ * Express middleware to automatically intercept and sanitize the outgoing response JSON payload.
+ * Runs the response body through the co-located response Zod schema.
+ */
+export const validateResponse = (schema: z.ZodObject<z.ZodRawShape>) => (_req: Request, res: Response, next: NextFunction) => {
+  const originalJson = res.json;
+  res.json = function (body: unknown): Response {
+    try {
+      const parsed = schema.parse(body);
+      return originalJson.call(this, parsed);
+    } catch (error) {
+      console.error('Response validation/sanitization failed:', error);
+      return originalJson.call(this, body);
+    }
+  };
+  next();
+};

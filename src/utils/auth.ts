@@ -1,10 +1,13 @@
 import crypto from 'crypto';
+import { promisify } from 'util';
 
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET as string;
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET as string;
 
 if (!process.env.JWT_ACCESS_SECRET) throw new Error('JWT_ACCESS_SECRET is not defined in environment variables');
 if (!process.env.JWT_REFRESH_SECRET) throw new Error('JWT_REFRESH_SECRET is not defined in environment variables');
+
+const pbkdf2Async = promisify(crypto.pbkdf2);
 
 export type TokenPayload = {
   userId: string;
@@ -43,7 +46,12 @@ export function verifyJwt(token: string, isRefresh = false): TokenPayload | null
     const [header, payload, signature] = parts;
     const signatureInput = `${header}.${payload}`;
     const expectedSignature = crypto.createHmac('sha256', secret).update(signatureInput).digest('base64url');
-    if (signature !== expectedSignature) return null;
+
+    // Constant-time comparison to prevent timing attacks
+    const sigBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expectedSignature);
+    if (sigBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(sigBuffer, expectedBuffer)) return null;
+
     const decodedPayload = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
     if (decodedPayload.exp && Date.now() / 1000 > decodedPayload.exp) return null; // Check expiration
 
@@ -59,28 +67,22 @@ export function verifyJwt(token: string, isRefresh = false): TokenPayload | null
 /**
  * Hashes a password utilizing PBKDF2 with SHA512 for optimal security.
  */
-export function hashPassword(password: string): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const salt = crypto.randomBytes(16).toString('hex');
-    crypto.pbkdf2(password, salt, 100000, 64, 'sha512', (err, derivedKey) => {
-      if (err) return reject(err);
-      resolve(`${salt}:${derivedKey.toString('hex')}`);
-    });
-  });
+export async function hashPassword(password: string): Promise<string> {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const derivedKey = await pbkdf2Async(password, salt, 100000, 64, 'sha512');
+  return `${salt}:${derivedKey.toString('hex')}`;
 }
 
 /**
  * Verifies a password hash utilizing timingSafeEqual for protection against timing attacks.
  */
-export function verifyPassword(password: string, hash: string): Promise<boolean> {
-  return new Promise((resolve, reject) => {
-    const [salt, key] = hash.split(':');
-    if (!salt || !key) return resolve(false);
-
-    crypto.pbkdf2(password, salt, 100000, 64, 'sha512', (err, derivedKey) => {
-      if (err) return reject(err);
-      const isMatch = crypto.timingSafeEqual(derivedKey, Buffer.from(key, 'hex'));
-      resolve(isMatch);
-    });
-  });
+export async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  const [salt, key] = hash.split(':');
+  if (!salt || !key) return false;
+  try {
+    const derivedKey = await pbkdf2Async(password, salt, 100000, 64, 'sha512');
+    return crypto.timingSafeEqual(derivedKey, Buffer.from(key, 'hex'));
+  } catch {
+    return false;
+  }
 }
