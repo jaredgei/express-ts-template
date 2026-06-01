@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { db } from '../utils/database';
-import { users, selectUserSchema, User } from '../models/user';
+import { users, selectUserSchema, UserRow } from '../models/user';
 import { hashPassword, verifyPassword, signJwt, verifyJwt } from '../utils/auth';
 import { AuthenticatedRequest } from '../middleware/auth';
 
@@ -13,14 +13,12 @@ const cookieOptions = {
   sameSite: 'lax' as const,
   maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
 };
+const { maxAge: _maxAge, ...clearCookieOptions } = cookieOptions;
 
 // Helper to set refresh token cookie and return response
-const sendAuthResponse = (res: Response, statusCode: number, user: User, accessToken: string, refreshToken: string) => {
+const sendAuthResponse = (res: Response, statusCode: number, { passwordHash: _, ...user }: UserRow, accessToken: string, refreshToken: string) => {
   res.cookie('refreshToken', refreshToken, cookieOptions);
-  res.status(statusCode).json({
-    user,
-    accessToken,
-  });
+  res.status(statusCode).json({ user, accessToken });
 };
 
 // --- SCHEMAS ---
@@ -107,7 +105,7 @@ export const refreshHandler = async (req: Request, res: Response) => {
 
 // POST /api/users/logout
 export const logoutHandler = async (_req: Request, res: Response) => {
-  res.clearCookie('refreshToken', { httpOnly: cookieOptions.httpOnly, secure: cookieOptions.secure, sameSite: cookieOptions.sameSite });
+  res.clearCookie('refreshToken', clearCookieOptions);
   res.status(200).json({ success: true });
 };
 

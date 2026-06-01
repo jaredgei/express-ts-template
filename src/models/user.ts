@@ -1,4 +1,5 @@
 import { varchar } from 'drizzle-orm/pg-core';
+import { z } from 'zod';
 import { createModel } from '../utils/schema';
 
 export const {
@@ -15,5 +16,6 @@ export const {
 export const selectUserSchema = rawSelectUserSchema.omit({ passwordHash: true });
 
 // Infer typescript types automatically
-export type User = typeof users.$inferSelect;
+export type UserRow = typeof users.$inferSelect;
+export type User = z.infer<typeof selectUserSchema>;
 export type NewUser = typeof users.$inferInsert;

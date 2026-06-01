@@ -1,25 +1,15 @@
 import { Router } from 'express';
-import { registry } from './route';
+import { registeredPaths } from './route';
 
 export const serveSwaggerDocs = async (router: Router) => {
-  // Lazy imports so swagger doesn't need to be required as a production dependency
   const swaggerUi = await import('swagger-ui-express');
   const { OpenAPIRegistry, OpenApiGeneratorV3 } = await import('@asteasolutions/zod-to-openapi');
 
-  const realRegistry = new OpenAPIRegistry();
-  for (const def of registry.definitions) {
-    if (def.type === 'component') {
-      realRegistry.registerComponent(
-        def.componentType as Parameters<typeof realRegistry.registerComponent>[0],
-        def.name,
-        def.component as Parameters<typeof realRegistry.registerComponent>[2],
-      );
-    } else if (def.type === 'route') {
-      realRegistry.registerPath(def.route);
-    }
-  }
+  const registry = new OpenAPIRegistry();
+  registry.registerComponent('securitySchemes', 'bearerAuth', { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' });
+  for (const path of registeredPaths) registry.registerPath(path);
 
-  const generator = new OpenApiGeneratorV3(realRegistry.definitions);
+  const generator = new OpenApiGeneratorV3(registry.definitions);
 
   const swaggerDocument = generator.generateDocument({
     openapi: '3.0.0',

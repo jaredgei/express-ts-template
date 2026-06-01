@@ -3,42 +3,7 @@ import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 import { validateBody, validateQuery, validateParams, validateResponse } from '../middleware/validator';
 
-export type SimpleDefinition = { type: 'component'; componentType: string; name: string; component: unknown } | { type: 'route'; route: RouteConfig };
-
-class SimpleRegistry {
-  public readonly definitions: SimpleDefinition[] = [];
-
-  registerComponent(type: string, name: string, component: unknown) {
-    this.definitions.push({
-      type: 'component',
-      componentType: type,
-      name,
-      component,
-    });
-    return {
-      name,
-      ref: {
-        $ref: `#/components/${type}/${name}`,
-      },
-    };
-  }
-
-  registerPath(route: RouteConfig) {
-    this.definitions.push({
-      type: 'route',
-      route,
-    });
-  }
-}
-
-export const registry = new SimpleRegistry();
-
-// Register global security scheme for Swagger / OpenAPI UI
-registry.registerComponent('securitySchemes', 'bearerAuth', {
-  type: 'http',
-  scheme: 'bearer',
-  bearerFormat: 'JWT',
-});
+export const registeredPaths: RouteConfig[] = [];
 
 type RouteDefinition = {
   method: 'get' | 'post' | 'put' | 'delete' | 'patch';
@@ -155,7 +120,7 @@ export const mountRouter = (app: express.IRouter, prefix: string, customRouter: 
       };
     }
 
-    registry.registerPath({
+    registeredPaths.push({
       method,
       path: combinedPath,
       summary,
