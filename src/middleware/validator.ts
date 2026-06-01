@@ -20,20 +20,21 @@ export const validateBody = (schema: z.ZodObject<z.ZodRawShape>) => validateType
 export const validateQuery = (schema: z.ZodObject<z.ZodRawShape>) => validateType('query', schema);
 export const validateParams = (schema: z.ZodObject<z.ZodRawShape>) => validateType('params', schema);
 
+const errorSchema = z.object({ errors: z.string() });
+
 /**
  * Express middleware to automatically intercept and sanitize the outgoing response JSON payload.
- * Runs the response body through the co-located response Zod schema.
+ * Validates against the route's success schema OR the standard error shape.
  */
-export const validateResponse = (schema: z.ZodObject<z.ZodRawShape>) => (_req: Request, res: Response, next: NextFunction) => {
-  const originalJson = res.json;
-  res.json = function (body: unknown): Response {
-    try {
-      const parsed = schema.parse(body);
-      return originalJson.call(this, parsed);
-    } catch (error) {
-      console.error('Response validation/sanitization failed:', error);
-      return originalJson.call(this, body);
-    }
+export const validateResponse = (schema: z.ZodObject<z.ZodRawShape>) => {
+  const allowed = z.union([schema, errorSchema]);
+  return (_req: Request, res: Response, next: NextFunction) => {
+    const originalJson = res.json;
+    res.json = function (body: unknown): Response {
+      const result = allowed.safeParse(body);
+      if (!result.success) console.error('Unexpected response shape:', result.error);
+      return originalJson.call(this, result.success ? result.data : body);
+    };
+    next();
   };
-  next();
 };
