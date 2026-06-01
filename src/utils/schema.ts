@@ -1,6 +1,5 @@
-import { pgTable, PgColumnBuilderBase } from 'drizzle-orm/pg-core';
+import { pgTable, PgColumnBuilderBase, uuid, timestamp } from 'drizzle-orm/pg-core';
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
-import { uuid, timestamp } from 'drizzle-orm/pg-core';
 
 /**
  * Standard base columns that every table/model in our application should have.

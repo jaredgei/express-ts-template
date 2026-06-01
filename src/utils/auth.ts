@@ -1,11 +1,11 @@
 import crypto from 'crypto';
 import { promisify } from 'util';
 
-const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET as string;
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET as string;
-
 if (!process.env.JWT_ACCESS_SECRET) throw new Error('JWT_ACCESS_SECRET is not defined in environment variables');
 if (!process.env.JWT_REFRESH_SECRET) throw new Error('JWT_REFRESH_SECRET is not defined in environment variables');
+
+const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET;
+const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 
 const pbkdf2Async = promisify(crypto.pbkdf2);
 
