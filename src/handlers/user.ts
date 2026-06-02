@@ -111,7 +111,7 @@ export const logoutHandler = async (_req: Request, res: Response) => {
 
 // GET /api/users/me (Authenticated profile fetch)
 export const getMeHandler = async (req: AuthenticatedRequest, res: Response) => {
-  const [user] = await db.select().from(users).where(eq(users.id, req.user!.userId)).limit(1);
+  const [user] = await db.select().from(users).where(eq(users.id, req.user.userId)).limit(1);
   if (!user) return res.status(404).json({ errors: 'User not found' });
   res.status(200).json({ user });
 };

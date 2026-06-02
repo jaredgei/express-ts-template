@@ -20,7 +20,7 @@ export const baseColumns = {
  * - `selectSchema` (Zod schema for select queries)
  * - `insertSchema` (Zod schema for inserts)
  */
-export function createModel<TName extends string, TColumns extends Record<string, PgColumnBuilderBase>>(name: TName, columns: TColumns) {
+export function createModel<TName extends string, TColumns extends { [columnName: string]: PgColumnBuilderBase }>(name: TName, columns: TColumns) {
   const table = pgTable(name, {
     ...baseColumns,
     ...columns,

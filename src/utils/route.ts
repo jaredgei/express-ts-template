@@ -1,4 +1,4 @@
-import express, { Router, RequestHandler } from 'express';
+import express, { Router, RequestHandler, Request, Response, NextFunction } from 'express';
 import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
 import { validateBody, validateQuery, validateParams, validateResponse } from '../middleware/validator';
@@ -15,8 +15,8 @@ type RouteDefinition = {
     query?: z.ZodObject<z.ZodRawShape>;
     params?: z.ZodObject<z.ZodRawShape>;
   };
-  responses: Record<number, { description: string; schema?: z.ZodObject<z.ZodRawShape> }>;
-  handler: RequestHandler | RequestHandler[];
+  responses: { [statusCode: number]: { description: string; schema?: z.ZodObject<z.ZodRawShape> } };
+  handler: RequestHandler[];
   security?: boolean;
 };
 
@@ -33,11 +33,31 @@ export type RouteShorthand = {
 export type CustomRouter = {
   expressRouter: Router;
   routes: RouteDefinition[];
-  get: (path: string, schema: RouteShorthand, ...handlers: RequestHandler[]) => CustomRouter;
-  post: (path: string, schema: RouteShorthand, ...handlers: RequestHandler[]) => CustomRouter;
-  put: (path: string, schema: RouteShorthand, ...handlers: RequestHandler[]) => CustomRouter;
-  delete: (path: string, schema: RouteShorthand, ...handlers: RequestHandler[]) => CustomRouter;
-  patch: (path: string, schema: RouteShorthand, ...handlers: RequestHandler[]) => CustomRouter;
+  get: <TReq extends Request = Request>(
+    path: string,
+    schema: RouteShorthand,
+    ...handlers: Array<(req: TReq, res: Response, next: NextFunction) => unknown>
+  ) => CustomRouter;
+  post: <TReq extends Request = Request>(
+    path: string,
+    schema: RouteShorthand,
+    ...handlers: Array<(req: TReq, res: Response, next: NextFunction) => unknown>
+  ) => CustomRouter;
+  put: <TReq extends Request = Request>(
+    path: string,
+    schema: RouteShorthand,
+    ...handlers: Array<(req: TReq, res: Response, next: NextFunction) => unknown>
+  ) => CustomRouter;
+  delete: <TReq extends Request = Request>(
+    path: string,
+    schema: RouteShorthand,
+    ...handlers: Array<(req: TReq, res: Response, next: NextFunction) => unknown>
+  ) => CustomRouter;
+  patch: <TReq extends Request = Request>(
+    path: string,
+    schema: RouteShorthand,
+    ...handlers: Array<(req: TReq, res: Response, next: NextFunction) => unknown>
+  ) => CustomRouter;
 };
 
 export const createRouter = (): CustomRouter => {
@@ -64,7 +84,14 @@ export const createRouter = (): CustomRouter => {
     },
   };
 
-  function addRoute(method: RouteDefinition['method'], path: string, schema: RouteShorthand, handlers: RequestHandler[]) {
+  function addRoute<TReq extends Request = Request>(
+    method: RouteDefinition['method'],
+    path: string,
+    schema: RouteShorthand,
+    handlers: Array<(req: TReq, res: Response, next: NextFunction) => unknown>,
+  ) {
+    const expressHandlers = handlers.map((h) => (req: Request, res: Response, next: NextFunction) => h(req as TReq, res, next));
+
     routes.push({
       method,
       path,
@@ -82,7 +109,7 @@ export const createRouter = (): CustomRouter => {
         },
       },
       security: schema.security,
-      handler: handlers,
+      handler: expressHandlers,
     });
 
     const middlewares: RequestHandler[] = [];
@@ -92,7 +119,7 @@ export const createRouter = (): CustomRouter => {
     if (schema.response) middlewares.push(validateResponse(schema.response));
 
     const expressPath = path.replace(/{([^}]+)}/g, ':$1');
-    expressRouter[method](expressPath, ...middlewares, ...handlers);
+    expressRouter[method](expressPath, ...middlewares, ...expressHandlers);
 
     return self;
   }

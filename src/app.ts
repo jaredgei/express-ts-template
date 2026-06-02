@@ -27,9 +27,22 @@ export const createApp = async () => {
   app.use('/', (_: Request, response: Response) => response.send('Hello World!'));
 
   // GLOBAL ERROR HANDLER (Ensures JSON responses instead of default Express HTML error pages)
-  app.use((error: Error & { status?: number; statusCode?: number }, _req: Request, res: Response, _next: NextFunction) => {
-    console.error('Global Error Caught:', error);
-    res.status(error.status || error.statusCode || 500).json({
+  app.use((error: Error & { status?: number; statusCode?: number }, req: Request, res: Response, _next: NextFunction) => {
+    const status = error.status || error.statusCode || 500;
+
+    console.error(
+      JSON.stringify({
+        timestamp: new Date().toISOString(),
+        ip: req.ip,
+        method: req.method,
+        url: req.originalUrl || req.url,
+        status,
+        error: error.message || 'Internal Server Error',
+        stack: error.stack,
+      }),
+    );
+
+    res.status(status).json({
       errors: error.message || 'Internal Server Error',
     });
   });

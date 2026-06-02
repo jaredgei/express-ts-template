@@ -12,7 +12,8 @@
     "format:check": "prettier --check \"src/**/*.ts\"",
     "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "node -r ts-node/register --env-file=.env src/scripts/migrate.ts",
+    "db:migrate:prod": "node dist/scripts/migrate.js",
     "db:studio": "drizzle-kit studio",
     "test": "vitest run",
     "test:watch": "vitest"
