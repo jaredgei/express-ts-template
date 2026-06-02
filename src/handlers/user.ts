@@ -93,7 +93,7 @@ export const refreshHandler = async (req: Request, res: Response) => {
   const payload = token ? verifyJwt(token, true) : null;
   if (!payload) return res.status(401).json({ errors: token ? 'Invalid or expired refresh token' : 'Refresh token not found in cookies' });
 
-  res.status(200).json({ accessToken: signJwt({ userId: payload.userId, email: payload.email }, false) });
+  res.status(200).json({ accessToken: signJwt({ userId: payload.userId, email: payload.email }) });
 };
 
 // POST /api/users/logout
