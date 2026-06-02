@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { db } from '../utils/database';
-import { users, selectUserSchema, UserRow } from '../models/user';
+import { users, publicUserColumns, selectUserSchema, User } from '../models/user';
 import { hashPassword, verifyPassword, signJwt, verifyJwt } from '../utils/auth';
 import { AuthenticatedRequest } from '../middleware/auth';
 
@@ -15,15 +15,13 @@ const cookieOptions = {
 };
 const { maxAge: _maxAge, ...clearCookieOptions } = cookieOptions;
 
-// Helper to set refresh token cookie and return response
-const sendAuthResponse = (res: Response, statusCode: number, { passwordHash: _, ...user }: UserRow, accessToken: string, refreshToken: string) => {
+const sendAuthResponse = (res: Response, statusCode: number, user: User, accessToken: string, refreshToken: string) => {
   res.cookie('refreshToken', refreshToken, cookieOptions);
   res.status(statusCode).json({ user, accessToken });
 };
 
 // --- SCHEMAS ---
 
-// Registration
 export const registerBodySchema = z.object({
   name: z.string().min(1, 'Name is required'),
   email: z.string().email('Invalid email address'),
@@ -35,28 +33,23 @@ export const authResponseSchema = z.object({
   accessToken: z.string(),
 });
 
-// Login
 export const loginBodySchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(1, 'Password is required'),
 });
 
-// Refresh (Reads from cookie, so request body can be empty)
 export const refreshResponseSchema = z.object({
   accessToken: z.string(),
 });
 
-// Logout
 export const logoutResponseSchema = z.object({
   success: z.boolean(),
 });
 
-// Profile (/me)
 export const getMeResponseSchema = z.object({
   user: selectUserSchema,
 });
 
-// GET /api/users (Admin / List - Public or Protected)
 export const getUsersResponseSchema = z.object({
   users: z.array(selectUserSchema),
 });
@@ -64,17 +57,18 @@ export const getUsersResponseSchema = z.object({
 // --- HANDLERS ---
 
 // GET /api/users
-export const getUsersHandler = async (_req: Request, res: Response) => res.status(200).json({ users: await db.select().from(users) });
+export const getUsersHandler = async (_req: Request, res: Response) =>
+  res.status(200).json({ users: await db.select(publicUserColumns).from(users) });
 
 // POST /api/users/register
 export const registerHandler = async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
 
-  const [existingUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  const [existingUser] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
   if (existingUser) return res.status(400).json({ errors: 'Email is already registered' });
 
   const passwordHash = await hashPassword(password);
-  const [newUser] = await db.insert(users).values({ name, email, passwordHash }).returning();
+  const [newUser] = await db.insert(users).values({ name, email, passwordHash }).returning(publicUserColumns);
 
   const payload = { userId: newUser.id, email: newUser.email };
   sendAuthResponse(res, 201, newUser, signJwt(payload), signJwt(payload, true));
@@ -84,11 +78,13 @@ export const registerHandler = async (req: Request, res: Response) => {
 export const loginHandler = async (req: Request, res: Response) => {
   const { email, password } = req.body;
 
+  // Fetch the full row here — passwordHash is required for verification
   const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
   if (!user || !(await verifyPassword(password, user.passwordHash))) return res.status(401).json({ errors: 'Invalid email or password' });
 
-  const payload = { userId: user.id, email: user.email };
-  sendAuthResponse(res, 200, user, signJwt(payload), signJwt(payload, true));
+  const { passwordHash: _, ...safeUser } = user;
+  const payload = { userId: safeUser.id, email: safeUser.email };
+  sendAuthResponse(res, 200, safeUser, signJwt(payload), signJwt(payload, true));
 };
 
 // POST /api/users/refresh
@@ -108,7 +104,7 @@ export const logoutHandler = async (_req: Request, res: Response) => {
 
 // GET /api/users/me (Authenticated profile fetch)
 export const getMeHandler = async (req: AuthenticatedRequest, res: Response) => {
-  const [user] = await db.select().from(users).where(eq(users.id, req.user.userId)).limit(1);
+  const [user] = await db.select(publicUserColumns).from(users).where(eq(users.id, req.user.userId)).limit(1);
   if (!user) return res.status(404).json({ errors: 'User not found' });
   res.status(200).json({ user });
 };
