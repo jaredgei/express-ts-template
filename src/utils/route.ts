@@ -1,91 +1,50 @@
 import express, { Router, RequestHandler, Request, Response, NextFunction } from 'express';
 import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
-import { z } from 'zod';
-import { validateBody, validateQuery, validateParams, validateResponse } from '../middleware/validator';
+import { z, ZodRawShape } from 'zod';
+import { validateBody, validateQuery, validateParams } from '../middleware/validator';
 
 export const registeredPaths: RouteConfig[] = [];
 
+type HttpMethod = 'get' | 'post' | 'put' | 'delete' | 'patch';
+
 type RouteDefinition = {
-  method: 'get' | 'post' | 'put' | 'delete' | 'patch';
+  method: HttpMethod;
   path: string;
   summary?: string;
   description?: string;
-  request?: {
-    body?: z.ZodObject<z.ZodRawShape>;
-    query?: z.ZodObject<z.ZodRawShape>;
-    params?: z.ZodObject<z.ZodRawShape>;
-  };
-  responses: { [statusCode: number]: { description: string; schema?: z.ZodObject<z.ZodRawShape> } };
-  handler: RequestHandler[];
+  request?: { body?: z.ZodObject<ZodRawShape>; query?: z.ZodObject<ZodRawShape>; params?: z.ZodObject<ZodRawShape> };
+  responses: { [statusCode: number]: { description: string; schema?: z.ZodObject<ZodRawShape> } };
   security?: boolean;
 };
 
 export type RouteShorthand = {
-  query?: z.ZodObject<z.ZodRawShape>;
-  body?: z.ZodObject<z.ZodRawShape>;
-  params?: z.ZodObject<z.ZodRawShape>;
-  response?: z.ZodObject<z.ZodRawShape>;
+  query?: z.ZodObject<ZodRawShape>;
+  body?: z.ZodObject<ZodRawShape>;
+  params?: z.ZodObject<ZodRawShape>;
+  response?: z.ZodObject<ZodRawShape>;
+  status?: number;
   summary?: string;
   description?: string;
   security?: boolean;
 };
 
+type RouteMethod = <TReq extends Request = Request>(
+  path: string,
+  schema: RouteShorthand,
+  ...handlers: Array<(req: TReq, res: Response, next: NextFunction) => unknown>
+) => CustomRouter;
+
 export type CustomRouter = {
   expressRouter: Router;
   routes: RouteDefinition[];
-  get: <TReq extends Request = Request>(
-    path: string,
-    schema: RouteShorthand,
-    ...handlers: Array<(req: TReq, res: Response, next: NextFunction) => unknown>
-  ) => CustomRouter;
-  post: <TReq extends Request = Request>(
-    path: string,
-    schema: RouteShorthand,
-    ...handlers: Array<(req: TReq, res: Response, next: NextFunction) => unknown>
-  ) => CustomRouter;
-  put: <TReq extends Request = Request>(
-    path: string,
-    schema: RouteShorthand,
-    ...handlers: Array<(req: TReq, res: Response, next: NextFunction) => unknown>
-  ) => CustomRouter;
-  delete: <TReq extends Request = Request>(
-    path: string,
-    schema: RouteShorthand,
-    ...handlers: Array<(req: TReq, res: Response, next: NextFunction) => unknown>
-  ) => CustomRouter;
-  patch: <TReq extends Request = Request>(
-    path: string,
-    schema: RouteShorthand,
-    ...handlers: Array<(req: TReq, res: Response, next: NextFunction) => unknown>
-  ) => CustomRouter;
-};
+} & Record<HttpMethod, RouteMethod>;
 
 export const createRouter = (): CustomRouter => {
   const expressRouter = express.Router();
   const routes: RouteDefinition[] = [];
 
-  const self: CustomRouter = {
-    expressRouter,
-    routes,
-    get(path, schema, ...handlers) {
-      return addRoute('get', path, schema, handlers);
-    },
-    post(path, schema, ...handlers) {
-      return addRoute('post', path, schema, handlers);
-    },
-    put(path, schema, ...handlers) {
-      return addRoute('put', path, schema, handlers);
-    },
-    delete(path, schema, ...handlers) {
-      return addRoute('delete', path, schema, handlers);
-    },
-    patch(path, schema, ...handlers) {
-      return addRoute('patch', path, schema, handlers);
-    },
-  };
-
   function addRoute<TReq extends Request = Request>(
-    method: RouteDefinition['method'],
+    method: HttpMethod,
     path: string,
     schema: RouteShorthand,
     handlers: Array<(req: TReq, res: Response, next: NextFunction) => unknown>,
@@ -97,32 +56,30 @@ export const createRouter = (): CustomRouter => {
       path,
       summary: schema.summary || `${method.toUpperCase()} ${path}`,
       description: schema.description,
-      request: {
-        body: schema.body,
-        query: schema.query,
-        params: schema.params,
-      },
-      responses: {
-        200: {
-          description: 'Success',
-          schema: schema.response,
-        },
-      },
+      request: { body: schema.body, query: schema.query, params: schema.params },
+      responses: { [schema.status ?? 200]: { description: 'Success', schema: schema.response } },
       security: schema.security,
-      handler: expressHandlers,
     });
 
     const middlewares: RequestHandler[] = [];
     if (schema.body) middlewares.push(validateBody(schema.body));
     if (schema.query) middlewares.push(validateQuery(schema.query));
     if (schema.params) middlewares.push(validateParams(schema.params));
-    if (schema.response) middlewares.push(validateResponse(schema.response));
 
-    const expressPath = path.replace(/{([^}]+)}/g, ':$1');
-    expressRouter[method](expressPath, ...middlewares, ...expressHandlers);
+    expressRouter[method](path, ...middlewares, ...expressHandlers);
 
     return self;
   }
+
+  const self = {
+    expressRouter,
+    routes,
+    get: (path: string, schema: RouteShorthand, ...handlers: Parameters<RouteMethod>[2][]) => addRoute('get', path, schema, handlers),
+    post: (path: string, schema: RouteShorthand, ...handlers: Parameters<RouteMethod>[2][]) => addRoute('post', path, schema, handlers),
+    put: (path: string, schema: RouteShorthand, ...handlers: Parameters<RouteMethod>[2][]) => addRoute('put', path, schema, handlers),
+    delete: (path: string, schema: RouteShorthand, ...handlers: Parameters<RouteMethod>[2][]) => addRoute('delete', path, schema, handlers),
+    patch: (path: string, schema: RouteShorthand, ...handlers: Parameters<RouteMethod>[2][]) => addRoute('patch', path, schema, handlers),
+  } as CustomRouter;
 
   return self;
 };
@@ -132,7 +89,8 @@ export const mountRouter = (app: express.IRouter, prefix: string, customRouter: 
 
   for (const route of customRouter.routes) {
     const { method, path, request, responses, summary, description, security } = route;
-    const combinedPath = `${prefix.replace(/\/$/, '')}/${path.replace(/^\//, '')}`.replace(/\/$/, '') || '/';
+    const combined = `${prefix.replace(/\/$/, '')}/${path.replace(/^\//, '')}`.replace(/\/$/, '') || '/';
+    const openApiPath = combined.replace(/:([^/]+)/g, '{$1}');
 
     const openApiRequest: RouteConfig['request'] = {};
     if (request?.body) openApiRequest.body = { content: { 'application/json': { schema: request.body } } };
@@ -149,7 +107,7 @@ export const mountRouter = (app: express.IRouter, prefix: string, customRouter: 
 
     registeredPaths.push({
       method,
-      path: combinedPath,
+      path: openApiPath,
       summary,
       description,
       request: openApiRequest,

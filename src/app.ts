@@ -27,8 +27,8 @@ export const createApp = async () => {
   app.use('/', (_: Request, response: Response) => response.send('Hello World!'));
 
   // GLOBAL ERROR HANDLER (Ensures JSON responses instead of default Express HTML error pages)
-  app.use((error: Error & { status?: number; statusCode?: number }, req: Request, res: Response, _next: NextFunction) => {
-    const status = error.status || error.statusCode || 500;
+  app.use((error: Error & { status?: number }, req: Request, res: Response, _next: NextFunction) => {
+    const status = error.status || 500;
 
     console.error(
       JSON.stringify({

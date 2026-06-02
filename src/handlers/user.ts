@@ -67,20 +67,17 @@ export const getUsersResponseSchema = z.object({
 export const getUsersHandler = async (_req: Request, res: Response) => res.status(200).json({ users: await db.select().from(users) });
 
 // POST /api/users/register
-export const registerHandler = async (request: Request, response: Response) => {
-  const { name, email, password } = request.body;
+export const registerHandler = async (req: Request, res: Response) => {
+  const { name, email, password } = req.body;
 
-  // Check if email already exists
   const [existingUser] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-  if (existingUser) return response.status(400).json({ errors: 'Email is already registered' });
+  if (existingUser) return res.status(400).json({ errors: 'Email is already registered' });
 
-  // Hash password & save user
   const passwordHash = await hashPassword(password);
   const [newUser] = await db.insert(users).values({ name, email, passwordHash }).returning();
 
-  // Generate tokens & respond
   const payload = { userId: newUser.id, email: newUser.email };
-  sendAuthResponse(response, 201, newUser, signJwt(payload), signJwt(payload, true));
+  sendAuthResponse(res, 201, newUser, signJwt(payload), signJwt(payload, true));
 };
 
 // POST /api/users/login

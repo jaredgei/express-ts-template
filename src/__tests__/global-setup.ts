@@ -3,7 +3,8 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 
 const TEST_DB = 'express_ts_test';
-const BASE_URL = 'postgresql://postgres:postgres@localhost:5432';
+const dbUrl = new URL(process.env.DATABASE_URL ?? 'postgresql://postgres:postgres@localhost:5432/express_ts_test');
+const BASE_URL = `postgresql://${dbUrl.username}:${dbUrl.password}@${dbUrl.host}`;
 
 export async function setup() {
   const admin = postgres(`${BASE_URL}/postgres`);
