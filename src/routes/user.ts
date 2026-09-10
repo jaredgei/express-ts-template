@@ -3,29 +3,33 @@ import {
   getUsersResponseSchema,
   registerHandler,
   registerBodySchema,
-  authResponseSchema,
+  userResponseSchema,
   loginHandler,
   loginBodySchema,
-  refreshHandler,
-  refreshResponseSchema,
   logoutHandler,
   logoutResponseSchema,
   getMeHandler,
-  getMeResponseSchema,
 } from '../handlers/user';
-import { createRouter } from '../utils/route';
 import { authenticate } from '../middleware/auth';
+import { authRateLimiter } from '../middleware/rateLimit';
+import { createRouter } from '../utils/route';
 
 const router = createRouter();
 
-// Public User Management endpoints
 router.get('/', { response: getUsersResponseSchema, summary: 'Get all users' }, getUsersHandler);
-router.post('/register', { body: registerBodySchema, response: authResponseSchema, status: 201, summary: 'Register a new user' }, registerHandler);
-router.post('/login', { body: loginBodySchema, response: authResponseSchema, summary: 'Authenticate user and issue tokens' }, loginHandler);
-router.post('/refresh', { response: refreshResponseSchema, summary: 'Issue a new access token using the HTTP-Only refresh cookie' }, refreshHandler);
-router.post('/logout', { response: logoutResponseSchema, summary: 'Log out the user and clear secure refresh cookies' }, logoutHandler);
-
-// Protected user profile endpoint
-router.get('/me', { response: getMeResponseSchema, summary: 'Fetch authenticated user profile', security: true }, authenticate, getMeHandler);
+router.post(
+  '/register',
+  { body: registerBodySchema, response: userResponseSchema, status: 201, summary: 'Register a new user' },
+  authRateLimiter,
+  registerHandler,
+);
+router.post(
+  '/login',
+  { body: loginBodySchema, response: userResponseSchema, summary: 'Authenticate user and start a session' },
+  authRateLimiter,
+  loginHandler,
+);
+router.post('/logout', { response: logoutResponseSchema, summary: 'Log out and destroy the session' }, logoutHandler);
+router.get('/me', { response: userResponseSchema, summary: 'Fetch authenticated user profile', security: true }, authenticate, getMeHandler);
 
 export default router;

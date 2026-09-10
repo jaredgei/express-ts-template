@@ -1,37 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { signJwt, verifyJwt, hashPassword, verifyPassword, TokenPayload } from '../utils/auth';
 
-const payload: TokenPayload = { userId: 'user-123', email: 'test@example.com' };
-
-describe('JWT', () => {
-  it('signs and verifies an access token', () => {
-    const token = signJwt(payload);
-    const result = verifyJwt(token);
-    expect(result).toEqual(payload);
-  });
-
-  it('signs and verifies a refresh token', () => {
-    const token = signJwt(payload, true);
-    const result = verifyJwt(token, true);
-    expect(result).toEqual(payload);
-  });
-
-  it('rejects an access token verified as refresh', () => {
-    const token = signJwt(payload, false);
-    expect(verifyJwt(token, true)).toBeNull();
-  });
-
-  it('rejects a tampered token', () => {
-    const token = signJwt(payload);
-    expect(verifyJwt(token + 'x')).toBeNull();
-  });
-
-  it('rejects malformed tokens', () => {
-    expect(verifyJwt('')).toBeNull();
-    expect(verifyJwt('a.b')).toBeNull();
-    expect(verifyJwt('not-a-jwt')).toBeNull();
-  });
-});
+import { hashPassword, verifyPassword } from '../utils/auth';
 
 describe('Password Hashing', () => {
   it('hashes and verifies a password', async () => {
@@ -51,6 +20,6 @@ describe('Password Hashing', () => {
 
   it('rejects malformed hashes', async () => {
     expect(await verifyPassword('anything', '')).toBe(false);
-    expect(await verifyPassword('anything', 'noseparator')).toBe(false);
+    expect(await verifyPassword('anything', 'not-a-hash')).toBe(false);
   });
 });

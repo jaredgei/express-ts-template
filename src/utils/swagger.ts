@@ -6,7 +6,7 @@ export const serveSwaggerDocs = async (router: Router) => {
   const { OpenAPIRegistry, OpenApiGeneratorV3 } = await import('@asteasolutions/zod-to-openapi');
 
   const registry = new OpenAPIRegistry();
-  registry.registerComponent('securitySchemes', 'bearerAuth', { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' });
+  registry.registerComponent('securitySchemes', 'cookieAuth', { type: 'apiKey', in: 'cookie', name: 'sid' });
   for (const path of registeredPaths) registry.registerPath(path);
 
   const generator = new OpenApiGeneratorV3(registry.definitions);

@@ -1,21 +1,14 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyJwt, TokenPayload } from '../utils/auth';
 
-export type AuthenticatedRequest = Request & {
-  user: TokenPayload;
-};
+import { SESSION_COOKIE, getSessionUserId } from '../utils/session';
 
-/**
- * Express middleware to enforce JWT Bearer authentication.
- */
-export const authenticate = (req: Request, res: Response, next: NextFunction) => {
-  const authHeader = req.headers.authorization;
+export type AuthenticatedRequest = Request & { userId: string };
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) return res.status(401).json({ errors: 'Unauthorized: Missing or invalid token format' });
-  const token = authHeader.split(' ')[1];
-  const payload = verifyJwt(token, false);
-  if (!payload) return res.status(401).json({ errors: 'Unauthorized: Token is invalid or has expired' });
+export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
+  const token = req.cookies?.[SESSION_COOKIE];
+  const userId = token ? await getSessionUserId(token) : null;
+  if (!userId) return res.status(401).json({ errors: 'Unauthorized' });
 
-  (req as AuthenticatedRequest).user = payload;
+  (req as AuthenticatedRequest).userId = userId;
   next();
 };

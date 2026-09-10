@@ -9,12 +9,11 @@ export default tseslint.config(
   {
     files: ['**/*.{ts,tsx}'],
     rules: {
-      'semi': [ 'error', 'always' ],
-      'indent': [ 'error', 2 ],
+      'semi': ['error', 'always'],
+      'indent': ['error', 2],
       'quotes': ['error', 'single'],
-      'no-unused-vars': 'off',
-      '@typescript-eslint/no-unused-vars': 'off',
-    }
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
+    },
   },
   eslintConfigPrettier
 );

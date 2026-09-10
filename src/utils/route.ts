@@ -112,7 +112,7 @@ export const mountRouter = (app: express.IRouter, prefix: string, customRouter: 
       description,
       request: openApiRequest,
       responses: openApiResponses,
-      security: security ? [{ bearerAuth: [] }] : undefined,
+      security: security ? [{ cookieAuth: [] }] : undefined,
     });
   }
 };

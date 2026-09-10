@@ -8,6 +8,24 @@ import logger from './middleware/logger';
 import userRouter from './routes/user';
 import { mountRouter } from './utils/route';
 
+export const errorHandler = (error: Error & { status?: number }, req: Request, res: Response, _next: NextFunction) => {
+  const status = error.status || 500;
+
+  console.error(
+    JSON.stringify({
+      timestamp: new Date().toISOString(),
+      ip: req.ip,
+      method: req.method,
+      url: req.originalUrl,
+      status,
+      error: error.message,
+      stack: error.stack,
+    }),
+  );
+
+  res.status(status).json({ errors: status < 500 ? error.message : 'Internal Server Error' });
+};
+
 export const createApp = async () => {
   const app = express();
 
@@ -30,23 +48,7 @@ export const createApp = async () => {
     app.use((_req: Request, res: Response) => res.sendFile(path.join(frontendDir, 'index.html')));
   }
 
-  app.use((error: Error & { status?: number }, req: Request, res: Response, _next: NextFunction) => {
-    const status = error.status || 500;
-
-    console.error(
-      JSON.stringify({
-        timestamp: new Date().toISOString(),
-        ip: req.ip,
-        method: req.method,
-        url: req.originalUrl,
-        status,
-        error: error.message,
-        stack: error.stack,
-      }),
-    );
-
-    res.status(status).json({ errors: status < 500 ? error.message : 'Internal Server Error' });
-  });
+  app.use(errorHandler);
 
   return app;
 };

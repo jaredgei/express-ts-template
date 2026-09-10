@@ -1,26 +1,12 @@
 import { Request, Response } from 'express';
-import { z } from 'zod';
 import { eq } from 'drizzle-orm';
-import { db } from '../utils/database';
-import { users, publicUserColumns, selectUserSchema, User } from '../models/user';
-import { hashPassword, verifyPassword, signJwt, verifyJwt } from '../utils/auth';
+import { z } from 'zod';
+
+import { users, publicUserColumns, selectUserSchema } from '../models/user';
 import { AuthenticatedRequest } from '../middleware/auth';
-
-// Cookie Options for standard JWT Refresh Tokens
-const cookieOptions = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
-  maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
-};
-const { maxAge: _maxAge, ...clearCookieOptions } = cookieOptions;
-
-const sendAuthResponse = (res: Response, statusCode: number, user: User, accessToken: string, refreshToken: string) => {
-  res.cookie('refreshToken', refreshToken, cookieOptions);
-  res.status(statusCode).json({ user, accessToken });
-};
-
-// --- SCHEMAS ---
+import { hashPassword, verifyPassword } from '../utils/auth';
+import { db } from '../utils/database';
+import { SESSION_COOKIE, sessionCookieOptions, createSession, destroySession } from '../utils/session';
 
 export const registerBodySchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -28,39 +14,24 @@ export const registerBodySchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
-export const authResponseSchema = z.object({
-  user: selectUserSchema,
-  accessToken: z.string(),
-});
-
 export const loginBodySchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(1, 'Password is required'),
 });
 
-export const refreshResponseSchema = z.object({
-  accessToken: z.string(),
-});
+export const userResponseSchema = z.object({ user: selectUserSchema });
 
-export const logoutResponseSchema = z.object({
-  success: z.boolean(),
-});
+export const logoutResponseSchema = z.object({ success: z.boolean() });
 
-export const getMeResponseSchema = z.object({
-  user: selectUserSchema,
-});
+export const getUsersResponseSchema = z.object({ users: z.array(selectUserSchema) });
 
-export const getUsersResponseSchema = z.object({
-  users: z.array(selectUserSchema),
-});
+const startSession = async (res: Response, userId: string) => {
+  res.cookie(SESSION_COOKIE, await createSession(userId), sessionCookieOptions);
+};
 
-// --- HANDLERS ---
-
-// GET /api/users
 export const getUsersHandler = async (_req: Request, res: Response) =>
   res.status(200).json({ users: await db.select(publicUserColumns).from(users) });
 
-// POST /api/users/register
 export const registerHandler = async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
 
@@ -68,43 +39,32 @@ export const registerHandler = async (req: Request, res: Response) => {
   if (existingUser) return res.status(400).json({ errors: 'Email is already registered' });
 
   const passwordHash = await hashPassword(password);
-  const [newUser] = await db.insert(users).values({ name, email, passwordHash }).returning(publicUserColumns);
+  const [user] = await db.insert(users).values({ name, email, passwordHash }).returning(publicUserColumns);
 
-  const payload = { userId: newUser.id, email: newUser.email };
-  sendAuthResponse(res, 201, newUser, signJwt(payload), signJwt(payload, true));
+  await startSession(res, user.id);
+  res.status(201).json({ user });
 };
 
-// POST /api/users/login
 export const loginHandler = async (req: Request, res: Response) => {
   const { email, password } = req.body;
 
-  // Fetch the full row here — passwordHash is required for verification
   const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
   if (!user || !(await verifyPassword(password, user.passwordHash))) return res.status(401).json({ errors: 'Invalid email or password' });
 
   const { passwordHash: _, ...safeUser } = user;
-  const payload = { userId: safeUser.id, email: safeUser.email };
-  sendAuthResponse(res, 200, safeUser, signJwt(payload), signJwt(payload, true));
+  await startSession(res, safeUser.id);
+  res.status(200).json({ user: safeUser });
 };
 
-// POST /api/users/refresh
-export const refreshHandler = async (req: Request, res: Response) => {
-  const token = req.cookies?.refreshToken;
-  const payload = token ? verifyJwt(token, true) : null;
-  if (!payload) return res.status(401).json({ errors: token ? 'Invalid or expired refresh token' : 'Refresh token not found in cookies' });
-
-  res.status(200).json({ accessToken: signJwt({ userId: payload.userId, email: payload.email }) });
-};
-
-// POST /api/users/logout
-export const logoutHandler = async (_req: Request, res: Response) => {
-  res.clearCookie('refreshToken', clearCookieOptions);
+export const logoutHandler = async (req: Request, res: Response) => {
+  const token = req.cookies?.[SESSION_COOKIE];
+  if (token) await destroySession(token);
+  res.clearCookie(SESSION_COOKIE, sessionCookieOptions);
   res.status(200).json({ success: true });
 };
 
-// GET /api/users/me (Authenticated profile fetch)
 export const getMeHandler = async (req: AuthenticatedRequest, res: Response) => {
-  const [user] = await db.select(publicUserColumns).from(users).where(eq(users.id, req.user.userId)).limit(1);
+  const [user] = await db.select(publicUserColumns).from(users).where(eq(users.id, req.userId)).limit(1);
   if (!user) return res.status(404).json({ errors: 'User not found' });
   res.status(200).json({ user });
 };
