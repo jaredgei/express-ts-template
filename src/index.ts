@@ -2,7 +2,7 @@ import { exit } from 'process';
 import { createApp } from './app';
 import { testConnection } from './utils/database';
 
-const PORT = process.env.PORT || 8001;
+const PORT = process.env.PORT || 8008;
 
 (async () => {
   try {
