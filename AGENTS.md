@@ -87,6 +87,6 @@ import { db } from '../utils/database';
 
 ## Testing
 
-- Vitest + Supertest. Tests live in `src/__tests__/`. Unit-test utilities directly; integration-test routes through the app via Supertest.
+- Vitest + Supertest. Tests live in `src/__tests__/`, mirroring the source layout (`src/__tests__/utils/session.test.ts`, `src/__tests__/handlers/user.test.ts`); never beside the code they cover. Shared harness (e.g. `global-setup.ts`) stays at the `__tests__` root. Unit-test utilities directly; integration-test routes through the app via Supertest.
 - Integration tests run against the dedicated `express_ts_test` database provisioned in `src/__tests__/global-setup.ts`. Reset state between tests (`beforeEach`), don't depend on ordering.
 - Test behavior through the public API: hit the endpoint, assert status and response body, assert what a client actually observes (including that secrets like `passwordHash` are absent).

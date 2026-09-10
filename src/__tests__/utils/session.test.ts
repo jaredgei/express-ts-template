@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterAll } from 'vitest';
 import { eq } from 'drizzle-orm';
 
-import { users } from '../models/user';
-import { sessions } from '../models/session';
-import { db, client } from '../utils/database';
-import { createSession, getSessionUserId, destroySession, deleteExpiredSessions } from '../utils/session';
+import { users } from '../../models/user';
+import { sessions } from '../../models/session';
+import { db, client } from '../../utils/database';
+import { createSession, getSessionUserId, destroySession, deleteExpiredSessions } from '../../utils/session';
 
 const insertUser = async () => {
   const [user] = await db.insert(users).values({ name: 'Session User', email: 'session@example.com', passwordHash: 'x' }).returning({ id: users.id });

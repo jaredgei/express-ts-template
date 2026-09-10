@@ -10,7 +10,7 @@ import {
   logoutResponseSchema,
   getMeHandler,
 } from '../handlers/user';
-import { authenticate } from '../middleware/auth';
+import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { authRateLimiter } from '../middleware/rateLimit';
 import { createRouter } from '../utils/route';
 
@@ -30,6 +30,11 @@ router.post(
   loginHandler,
 );
 router.post('/logout', { response: logoutResponseSchema, summary: 'Log out and destroy the session' }, logoutHandler);
-router.get('/me', { response: userResponseSchema, summary: 'Fetch authenticated user profile', security: true }, authenticate, getMeHandler);
+router.get<AuthenticatedRequest>(
+  '/me',
+  { response: userResponseSchema, summary: 'Fetch authenticated user profile', security: true },
+  authenticate,
+  getMeHandler,
+);
 
 export default router;

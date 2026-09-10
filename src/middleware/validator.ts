@@ -7,6 +7,7 @@ const validateType = (key: 'body' | 'query' | 'params', schema: z.ZodObject<ZodR
     if (key === 'body') {
       req.body = parsed;
     } else {
+      // Express 5 exposes req.query/req.params as read-only getters; defineProperty is the only way to replace them with parsed values.
       Object.defineProperty(req, key, { value: parsed, writable: true, configurable: true, enumerable: true });
     }
     next();

@@ -1,5 +1,5 @@
-import { Request, Response } from 'express';
 import { eq } from 'drizzle-orm';
+import { Request, Response } from 'express';
 import { z } from 'zod';
 
 import { users, publicUserColumns, selectUserSchema } from '../models/user';

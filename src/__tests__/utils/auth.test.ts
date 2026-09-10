@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { hashPassword, verifyPassword } from '../utils/auth';
+import { hashPassword, verifyPassword } from '../../utils/auth';
 
 describe('Password Hashing', () => {
   it('hashes and verifies a password', async () => {
