@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 
-import { SESSION_COOKIE, getSessionUserId } from '../utils/session';
+import { SESSION_COOKIE, getSessionUserId } from '@/utils/session';
 
 export type AuthenticatedRequest = Request & { userId: string };
 

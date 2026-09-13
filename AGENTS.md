@@ -23,7 +23,7 @@ Layered, one domain per file across layers:
 - `src/routes/` — declarations via `createRouter`; each route names its Zod schemas, status, summary, and `security`. Validation and OpenAPI docs are derived from this single declaration.
 - `src/handlers/` — request handlers plus their request/response Zod schemas.
 - `src/middleware/` — cross-cutting concerns (auth, logging, security, validation).
-- `src/utils/` — shared building blocks (auth, database, route builder, schema factory, swagger).
+- `src/utils/` — shared building blocks (auth, database, env, route builder, schema factory, swagger).
 
 Prefer extending these abstractions over bypassing them. A new endpoint is a `createRouter` declaration + a handler + (if needed) a model, not raw `express.Router` wiring.
 
@@ -40,7 +40,7 @@ Use `npm run format` to auto-fix formatting, then re-run the checks.
 
 ## Import order
 
-Group imports into blocks separated by a blank line. Node built-ins first, then external packages, then internal modules ordered by layer (models, routes, handlers, middleware, utils):
+Group imports into blocks separated by a blank line. Node built-ins first, then external packages, then internal modules ordered by layer (models, routes, handlers, middleware, utils). Internal modules use the `@/*` alias (maps to `src/*`), never deep relative paths:
 
 ```ts
 import crypto from 'crypto';
@@ -48,9 +48,9 @@ import crypto from 'crypto';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 
-import { users, publicUserColumns } from '../models/user';
-import { authenticate } from '../middleware/auth';
-import { db } from '../utils/database';
+import { users, publicUserColumns } from '@/models/user';
+import { authenticate } from '@/middleware/auth';
+import { db } from '@/utils/database';
 ```
 
 ## Code style
@@ -65,10 +65,12 @@ import { db } from '../utils/database';
 - Always `async`/`await`, never `.then()`/`.catch()`/`.finally()` chains (except where a library requires a callback).
 - Handlers are `async` and terminal in their chain; rely on Express 5 to forward rejected promises to the global error handler. Do not wrap every handler in try/catch.
 - Use modern ES6+: `const`/`let` (never `var`), arrow functions, template literals, destructuring, spread/rest, default params, `?.`, `??`, and array/object methods over manual loops where they read clearly.
+- The project is native ESM (`"type": "module"`). Use `import`/`export` only — never `require`/`module.exports`, `__dirname`, or `__filename` (use `import.meta.url`/`import.meta.dirname`).
 
 ## Security
 
 - Never commit real secrets. `.env` is gitignored; `.env.example` holds safe placeholders.
+- Read configuration only through the validated `env` object in `src/utils/env.ts`, never `process.env` directly in feature code. New config keys are added to the Zod schema there and to `.env.example`.
 - Auth is server-side sessions over an `httpOnly` cookie (BFF pattern), stored in Postgres and revocable on logout. No tokens in client-readable storage.
 - Passwords are hashed with argon2id. Never log or return `passwordHash`; exclude it at the query level (`publicUserColumns`), not in JS after the fact.
 - Validate all external input with Zod at the route boundary. Never trust `req.body`/`req.query`/`req.params` unvalidated.

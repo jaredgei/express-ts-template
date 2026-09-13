@@ -9,3 +9,6 @@ export const verifyPassword = async (password: string, hash: string): Promise<bo
     return false;
   }
 };
+
+// Verified against unknown emails so login timing does not reveal whether an account exists.
+export const dummyPasswordHash = argon2.hash('invalid-password-placeholder', { type: argon2.argon2id });

@@ -1,7 +1,7 @@
 import { varchar, timestamp, uuid } from 'drizzle-orm/pg-core';
 
-import { createModel } from '../utils/schema';
-import { users } from './user';
+import { createModel } from '@/utils/schema';
+import { users } from '@/models/user';
 
 export const { table: sessions } = createModel('sessions', {
   userId: uuid('user_id')

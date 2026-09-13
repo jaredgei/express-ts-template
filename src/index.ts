@@ -1,10 +1,8 @@
-import { exit } from 'process';
+import { createApp } from '@/app';
+import { client, testConnection } from '@/utils/database';
+import { env } from '@/utils/env';
+import { deleteExpiredSessions } from '@/utils/session';
 
-import { createApp } from './app';
-import { testConnection } from './utils/database';
-import { deleteExpiredSessions } from './utils/session';
-
-const PORT = process.env.PORT || 8008;
 const SESSION_CLEANUP_INTERVAL_MS = 1000 * 60 * 60;
 
 (async () => {
@@ -13,11 +11,24 @@ const SESSION_CLEANUP_INTERVAL_MS = 1000 * 60 * 60;
     const app = await createApp();
 
     await deleteExpiredSessions();
-    setInterval(() => deleteExpiredSessions().catch(console.error), SESSION_CLEANUP_INTERVAL_MS).unref();
+    const cleanup = setInterval(() => deleteExpiredSessions().catch(console.error), SESSION_CLEANUP_INTERVAL_MS);
+    cleanup.unref();
 
-    app.listen(PORT, () => console.log(`Server is listening on port ${PORT}`));
+    const server = app.listen(env.PORT, () => console.log(`Server is listening on port ${env.PORT}`));
+
+    const shutdown = (signal: string) => {
+      console.log(`${signal} received, shutting down`);
+      clearInterval(cleanup);
+      server.close(async () => {
+        await client.end();
+        process.exit(0);
+      });
+    };
+
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT', () => shutdown('SIGINT'));
   } catch (error) {
     console.error(error);
-    exit(1);
+    process.exit(1);
   }
 })();

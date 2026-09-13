@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { registeredPaths } from './route';
+import { registeredPaths } from '@/utils/route';
 
 export const serveSwaggerDocs = async (router: Router) => {
   const swaggerUi = await import('swagger-ui-express');

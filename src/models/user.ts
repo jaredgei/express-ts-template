@@ -2,7 +2,7 @@ import { getTableColumns } from 'drizzle-orm';
 import { varchar } from 'drizzle-orm/pg-core';
 import { z } from 'zod';
 
-import { createModel } from '../utils/schema';
+import { createModel } from '@/utils/schema';
 
 export const {
   table: users,

@@ -3,9 +3,9 @@ import request from 'supertest';
 import express, { type Express } from 'express';
 import { rateLimit } from 'express-rate-limit';
 
-import { createApp, errorHandler } from '../../app';
-import { db, client } from '../../utils/database';
-import { users } from '../../models/user';
+import { createApp, errorHandler } from '@/app';
+import { db, client } from '@/utils/database';
+import { users } from '@/models/user';
 
 let app: Express;
 
@@ -24,6 +24,14 @@ afterAll(async () => {
 const testUser = { name: 'Test User', email: 'test@example.com', password: 'password123' };
 
 const sessionCookie = (res: request.Response) => res.headers['set-cookie'];
+
+describe('GET /health', () => {
+  it('reports ok without auth', async () => {
+    const res = await request(app).get('/health');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: 'ok' });
+  });
+});
 
 describe('POST /api/users/register', () => {
   it('registers a new user, returns the user and sets a session cookie', async () => {

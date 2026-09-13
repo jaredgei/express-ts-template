@@ -1,16 +1,11 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
-import * as schema from '../models';
-
-const databaseUrl = process.env.DATABASE_URL;
-
-if (!databaseUrl) {
-  throw new Error('DATABASE_URL is not defined in environment variables');
-}
+import * as schema from '@/models';
+import { env } from '@/utils/env';
 
 // Disable prefetch for compatibility with transaction poolers (like PgBouncer/Supabase)
-export const client = postgres(databaseUrl, { prepare: false });
+export const client = postgres(env.DATABASE_URL, { prepare: false });
 
 export const db = drizzle(client, { schema });
 

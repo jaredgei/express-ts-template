@@ -2,15 +2,16 @@ import crypto from 'crypto';
 
 import { and, eq, gt, lt } from 'drizzle-orm';
 
-import { sessions } from '../models/session';
-import { db } from './database';
+import { sessions } from '@/models/session';
+import { db } from '@/utils/database';
+import { isProduction } from '@/utils/env';
 
 export const SESSION_COOKIE = 'sid';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 
 export const sessionCookieOptions = {
   httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
+  secure: isProduction,
   sameSite: 'lax' as const,
   maxAge: SESSION_TTL_MS,
 };

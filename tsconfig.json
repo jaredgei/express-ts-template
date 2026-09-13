@@ -1,9 +1,13 @@
 {
   "compilerOptions": {
     "target": "es2022",
-    "module": "commonjs",
+    "module": "esnext",
+    "moduleResolution": "bundler",
     "rootDir": "./src",
     "outDir": "./dist",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
     "types": ["node"],
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
@@ -12,5 +16,5 @@
     "noUnusedParameters": true,
     "skipLibCheck": true
   },
-  "exclude": ["node_modules", "dist", "drizzle.config.ts", "vitest.config.ts", "src/__tests__"]
+  "exclude": ["node_modules", "dist", "drizzle.config.ts", "vitest.config.mts", "src/__tests__"]
 }

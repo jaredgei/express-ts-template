@@ -9,10 +9,10 @@ import {
   logoutHandler,
   logoutResponseSchema,
   getMeHandler,
-} from '../handlers/user';
-import { authenticate, AuthenticatedRequest } from '../middleware/auth';
-import { authRateLimiter } from '../middleware/rateLimit';
-import { createRouter } from '../utils/route';
+} from '@/handlers/user';
+import { authenticate, AuthenticatedRequest } from '@/middleware/auth';
+import { authRateLimiter } from '@/middleware/rateLimit';
+import { createRouter } from '@/utils/route';
 
 const router = createRouter();
 

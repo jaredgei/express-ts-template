@@ -2,7 +2,7 @@ import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
 import express, { Router, RequestHandler, Request, Response, NextFunction } from 'express';
 import { z, ZodRawShape } from 'zod';
 
-import { validateBody, validateQuery, validateParams } from '../middleware/validator';
+import { validateBody, validateQuery, validateParams } from '@/middleware/validator';
 
 export const registeredPaths: RouteConfig[] = [];
 

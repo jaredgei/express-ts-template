@@ -2,11 +2,11 @@ import { eq } from 'drizzle-orm';
 import { Request, Response } from 'express';
 import { z } from 'zod';
 
-import { users, publicUserColumns, selectUserSchema } from '../models/user';
-import { AuthenticatedRequest } from '../middleware/auth';
-import { hashPassword, verifyPassword } from '../utils/auth';
-import { db } from '../utils/database';
-import { SESSION_COOKIE, sessionCookieOptions, createSession, destroySession } from '../utils/session';
+import { users, publicUserColumns, selectUserSchema } from '@/models/user';
+import { AuthenticatedRequest } from '@/middleware/auth';
+import { hashPassword, verifyPassword, dummyPasswordHash } from '@/utils/auth';
+import { db } from '@/utils/database';
+import { SESSION_COOKIE, sessionCookieOptions, createSession, destroySession } from '@/utils/session';
 
 export const registerBodySchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -49,7 +49,11 @@ export const loginHandler = async (req: Request, res: Response) => {
   const { email, password } = req.body;
 
   const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-  if (!user || !(await verifyPassword(password, user.passwordHash))) return res.status(401).json({ errors: 'Invalid email or password' });
+  if (!user) {
+    await verifyPassword(password, await dummyPasswordHash);
+    return res.status(401).json({ errors: 'Invalid email or password' });
+  }
+  if (!(await verifyPassword(password, user.passwordHash))) return res.status(401).json({ errors: 'Invalid email or password' });
 
   const { passwordHash: _, ...safeUser } = user;
   await startSession(res, safeUser.id);

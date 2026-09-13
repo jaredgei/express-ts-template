@@ -7,7 +7,7 @@ An opinionated starter for backend APIs: **Express 5 + TypeScript + PostgreSQL**
 ## Stack
 
 - **Express 5** — async route handlers with automatic rejected-promise forwarding to the error handler
-- **TypeScript** in strict mode (`noUnusedLocals`/`noUnusedParameters`)
+- **TypeScript** in strict mode (`noUnusedLocals`/`noUnusedParameters`), native **ESM** (`tsx` in dev, `tsc` + `tsc-alias` for the build)
 - **PostgreSQL** via **Drizzle ORM** (`postgres.js` driver) with generated SQL migrations
 - **Zod** for request validation, derived from a single route declaration
 - **OpenAPI 3** docs generated from those same schemas, served via **Swagger UI**
@@ -43,15 +43,19 @@ The server runs on `http://localhost:8008`. Interactive API docs are available a
 PORT=8008
 NODE_ENV=development
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/express_ts
+CORS_ORIGIN=http://localhost:5173
+TRUST_PROXY=false
 ```
 
-Never commit `.env`. Add new configuration keys to `.env.example` (with safe placeholder values) so they're documented for everyone.
+Environment variables are validated once at startup with Zod (`src/utils/env.ts`); the process refuses to boot on invalid or missing config. `CORS_ORIGIN` is a comma-separated allowlist of browser origins (empty disables cross-origin requests); credentials are enabled so the session cookie works with a separate-origin SPA. Set `TRUST_PROXY=true` when running behind a reverse proxy or load balancer so rate limiting and `req.ip` use the forwarded client address.
+
+Never commit `.env`. Add new configuration keys to `.env.example` (with safe placeholder values) and to the schema in `src/utils/env.ts`.
 
 ## Scripts
 
 | Script                   | Description                                          |
 | ------------------------ | ---------------------------------------------------- |
-| `npm run dev`            | Start the dev server (nodemon + ts-node, hot reload) |
+| `npm run dev`            | Start the dev server (tsx watch, hot reload)         |
 | `npm run build`          | Compile TypeScript to `dist/`                        |
 | `npm run start`          | Run the compiled server from `dist/`                 |
 | `npm run typecheck`      | Run `tsc` with no emit                               |
@@ -84,6 +88,8 @@ drizzle/        Generated SQL migrations and snapshots
 
 Layered, one domain per file across layers. Adding an endpoint is a `createRouter` declaration + a handler + (if needed) a model — not raw `express.Router` wiring.
 
+Modules are imported via the `@/*` alias (`@/utils/database`) rather than deep relative paths; it maps to `src/*` and is resolved by `tsx` (dev), Vitest, and `tsc-alias` (build).
+
 ## What's included
 
 - **Type-safe route builder** — `createRouter` registers a route's method, path, Zod schemas, status, summary, and auth flag once. Validation middleware is attached automatically and the OpenAPI spec is generated from the same source.
@@ -92,6 +98,9 @@ Layered, one domain per file across layers. Adding an endpoint is a `createRoute
 - **Auto-generated API docs** — Swagger UI at `/docs`, built from the route registry, with a configured bearer/cookie security scheme.
 - **Structured request logging** — JSON access logs with method, path, status, and latency.
 - **Hardened error handling** — a global handler returns JSON, logs full detail server-side, and never leaks internal messages for 5xx responses.
+- **Health checks** — `GET /health` (liveness) and `GET /ready` (readiness, pings the DB) for containers and load balancers.
+- **Graceful shutdown** — `SIGTERM`/`SIGINT` stop accepting connections, drain in-flight requests, and close the DB pool.
+- **Container-ready** — a multi-stage [`Dockerfile`](./Dockerfile) builds a lean production image.
 
 ## Database
 
