@@ -10,5 +10,7 @@ export const verifyPassword = async (password: string, hash: string): Promise<bo
   }
 };
 
-// Verified against unknown emails so login timing does not reveal whether an account exists.
-export const dummyPasswordHash = argon2.hash('invalid-password-placeholder', { type: argon2.argon2id });
+let cachedDummyHash: Promise<string> | undefined;
+
+// Verified against unknown emails so auth timing does not reveal whether an account exists.
+export const dummyPasswordHash = (): Promise<string> => (cachedDummyHash ??= hashPassword('invalid-password-placeholder'));

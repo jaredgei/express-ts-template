@@ -49,4 +49,27 @@ describe('sessions', () => {
     await deleteExpiredSessions();
     expect(await db.select().from(sessions)).toHaveLength(0);
   });
+
+  it('does not slide a fresh session on read', async () => {
+    const userId = await insertUser();
+    const token = await createSession(userId);
+    const [before] = await db.select({ expiresAt: sessions.expiresAt }).from(sessions).where(eq(sessions.userId, userId));
+
+    await getSessionUserId(token);
+
+    const [after] = await db.select({ expiresAt: sessions.expiresAt }).from(sessions).where(eq(sessions.userId, userId));
+    expect(after.expiresAt.getTime()).toBe(before.expiresAt.getTime());
+  });
+
+  it('slides a session once it is past the halfway mark', async () => {
+    const userId = await insertUser();
+    const token = await createSession(userId);
+    const nearExpiry = new Date(Date.now() + 1000 * 60);
+    await db.update(sessions).set({ expiresAt: nearExpiry }).where(eq(sessions.userId, userId));
+
+    await getSessionUserId(token);
+
+    const [after] = await db.select({ expiresAt: sessions.expiresAt }).from(sessions).where(eq(sessions.userId, userId));
+    expect(after.expiresAt.getTime()).toBeGreaterThan(nearExpiry.getTime());
+  });
 });

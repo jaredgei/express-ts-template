@@ -13,7 +13,6 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write \"src/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\"",
-    "db:push": "drizzle-kit push",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file=.env src/scripts/migrate.ts",
     "db:migrate:prod": "node dist/scripts/migrate.js",
@@ -21,10 +20,10 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["express", "typescript", "template", "drizzle", "postgres", "zod", "openapi"],
+  "author": "Jared Geilich",
   "license": "ISC",
-  "description": "",
+  "description": "Opinionated Express 5 + TypeScript + PostgreSQL API template with Zod validation, auto-generated OpenAPI docs, and session-based auth.",
   "dependencies": {
     "argon2": "^0.45.1",
     "cookie-parser": "^1.4.7",

@@ -19,9 +19,17 @@ const SESSION_CLEANUP_INTERVAL_MS = 1000 * 60 * 60;
     const shutdown = (signal: string) => {
       console.log(`${signal} received, shutting down`);
       clearInterval(cleanup);
+      const force = setTimeout(() => process.exit(1), 10000);
+      force.unref();
       server.close(async () => {
-        await client.end();
-        process.exit(0);
+        try {
+          await client.end({ timeout: 5 });
+        } catch (error) {
+          console.error(error);
+        } finally {
+          clearTimeout(force);
+          process.exit(0);
+        }
       });
     };
 

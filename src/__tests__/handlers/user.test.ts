@@ -111,6 +111,34 @@ describe('POST /api/users/logout', () => {
   });
 });
 
+describe('GET /api/users', () => {
+  it('paginates with limit and offset', async () => {
+    for (const n of [1, 2, 3])
+      await request(app)
+        .post('/api/users/register')
+        .send({ ...testUser, email: `user${n}@example.com` });
+
+    const res = await request(app).get('/api/users?limit=2&offset=0');
+    expect(res.status).toBe(200);
+    expect(res.body.users).toHaveLength(2);
+    expect(res.body.users[0]).not.toHaveProperty('passwordHash');
+  });
+
+  it('rejects an invalid limit', async () => {
+    const res = await request(app).get('/api/users?limit=999');
+    expect(res.status).toBe(400);
+    expect(Array.isArray(res.body.errors)).toBe(true);
+  });
+});
+
+describe('Unknown API routes', () => {
+  it('returns a JSON 404', async () => {
+    const res = await request(app).get('/api/users/does-not-exist');
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ errors: ['Not found'] });
+  });
+});
+
 describe('Global error handler', () => {
   it('forwards a rejected async handler as a generic JSON 500 without leaking internals', async () => {
     const failing = express();
@@ -121,7 +149,7 @@ describe('Global error handler', () => {
 
     const res = await request(failing).get('/boom');
     expect(res.status).toBe(500);
-    expect(res.body).toEqual({ errors: 'Internal Server Error' });
+    expect(res.body).toEqual({ errors: ['Internal Server Error'] });
     expect(res.body).not.toHaveProperty('stack');
     expect(JSON.stringify(res.body)).not.toContain('secret database credentials');
   });

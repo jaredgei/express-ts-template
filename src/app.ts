@@ -9,14 +9,15 @@ import logger from '@/middleware/logger';
 import userRouter from '@/routes/user';
 import { client } from '@/utils/database';
 import { env, isProduction } from '@/utils/env';
-import { mountRouter } from '@/utils/route';
+import { MountedRouter, mountRouter } from '@/utils/route';
 
 export const errorHandler = (error: Error & { status?: number }, req: Request, res: Response, _next: NextFunction) => {
-  const status = error.status || 500;
+  const status = error.status ?? 500;
 
   console.error(
     JSON.stringify({
       timestamp: new Date().toISOString(),
+      requestId: req.id,
       ip: req.ip,
       method: req.method,
       url: req.originalUrl,
@@ -26,7 +27,7 @@ export const errorHandler = (error: Error & { status?: number }, req: Request, r
     }),
   );
 
-  res.status(status).json({ errors: status < 500 ? error.message : 'Internal Server Error' });
+  res.status(status).json({ errors: [status < 500 ? error.message : 'Internal Server Error'] });
 };
 
 export const createApp = async () => {
@@ -50,13 +51,16 @@ export const createApp = async () => {
     }
   });
 
-  mountRouter(app, '/api/users', userRouter);
+  const mounted: MountedRouter[] = [{ prefix: '/api/users', router: userRouter }];
+  for (const { prefix, router } of mounted) mountRouter(app, prefix, router);
 
   if (!isProduction) {
     const { serveSwaggerDocs } = await import('@/utils/swagger');
-    await serveSwaggerDocs(app);
+    await serveSwaggerDocs(app, mounted);
     console.log('Swagger documentation available at /docs');
   }
+
+  app.use('/api', (_req: Request, res: Response) => res.status(404).json({ errors: ['Not found'] }));
 
   if (env.FRONTEND_DIR) {
     const frontendDir = path.resolve(env.FRONTEND_DIR);

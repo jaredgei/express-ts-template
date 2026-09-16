@@ -1,57 +1,69 @@
 import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
 import express, { Router, RequestHandler, Request, Response, NextFunction } from 'express';
-import { z, ZodRawShape } from 'zod';
+import { z, ZodObject, ZodRawShape } from 'zod';
 
 import { validateBody, validateQuery, validateParams } from '@/middleware/validator';
 
-export const registeredPaths: RouteConfig[] = [];
+type DefaultParams = Request extends Request<infer P> ? P : never;
+type DefaultQuery = Request extends Request<DefaultParams, unknown, unknown, infer Q> ? Q : never;
 
 type HttpMethod = 'get' | 'post' | 'put' | 'delete' | 'patch';
 
-type RouteDefinition = {
-  method: HttpMethod;
-  path: string;
-  summary?: string;
-  description?: string;
-  request?: { body?: z.ZodObject<ZodRawShape>; query?: z.ZodObject<ZodRawShape>; params?: z.ZodObject<ZodRawShape> };
-  responses: { [statusCode: number]: { description: string; schema?: z.ZodObject<ZodRawShape> } };
-  security?: boolean;
-};
+type ObjectSchema = ZodObject<ZodRawShape>;
+
+type ResponseSpec = { description?: string; schema?: ObjectSchema };
 
 export type RouteShorthand = {
-  query?: z.ZodObject<ZodRawShape>;
-  body?: z.ZodObject<ZodRawShape>;
-  params?: z.ZodObject<ZodRawShape>;
-  response?: z.ZodObject<ZodRawShape>;
+  body?: ObjectSchema;
+  query?: ObjectSchema;
+  params?: ObjectSchema;
+  response?: ObjectSchema;
   status?: number;
+  responses?: Record<number, ResponseSpec>;
   summary?: string;
   description?: string;
   security?: boolean;
 };
 
-type RouteHandler<TReq extends Request = Request> = (req: TReq, res: Response, next: NextFunction) => unknown;
+type InferParams<T> = T extends ObjectSchema ? z.infer<T> & DefaultParams : DefaultParams;
+type InferQuery<T> = T extends ObjectSchema ? z.infer<T> & DefaultQuery : DefaultQuery;
+type InferBody<T> = T extends ObjectSchema ? z.infer<T> : unknown;
 
-type RouteMethod = <TReq extends Request = Request>(path: string, schema: RouteShorthand, ...handlers: RouteHandler<TReq>[]) => CustomRouter;
+type TypedRequest<S extends RouteShorthand> = Request<InferParams<S['params']>, unknown, InferBody<S['body']>, InferQuery<S['query']>>;
+
+type RouteHandler<S extends RouteShorthand> = (req: TypedRequest<S>, res: Response, next: NextFunction) => unknown;
+
+export type RouteDefinition = {
+  method: HttpMethod;
+  path: string;
+  summary: string;
+  description?: string;
+  request: { body?: ObjectSchema; query?: ObjectSchema; params?: ObjectSchema };
+  responses: Record<number, ResponseSpec>;
+  security?: boolean;
+};
+
+type RouteMethod = <S extends RouteShorthand>(path: string, schema: S, ...handlers: (RouteHandler<S> | RequestHandler)[]) => CustomRouter;
 
 export type CustomRouter = {
   expressRouter: Router;
   routes: RouteDefinition[];
 } & Record<HttpMethod, RouteMethod>;
 
+export type MountedRouter = { prefix: string; router: CustomRouter };
+
 export const createRouter = (): CustomRouter => {
   const expressRouter = express.Router();
   const routes: RouteDefinition[] = [];
 
-  function addRoute<TReq extends Request = Request>(method: HttpMethod, path: string, schema: RouteShorthand, handlers: RouteHandler<TReq>[]) {
-    const expressHandlers = handlers.map((h) => (req: Request, res: Response, next: NextFunction) => h(req as TReq, res, next));
-
+  const addRoute = <S extends RouteShorthand>(method: HttpMethod, path: string, schema: S, handlers: (RouteHandler<S> | RequestHandler)[]) => {
     routes.push({
       method,
       path,
-      summary: schema.summary || `${method.toUpperCase()} ${path}`,
+      summary: schema.summary ?? `${method.toUpperCase()} ${path}`,
       description: schema.description,
       request: { body: schema.body, query: schema.query, params: schema.params },
-      responses: { [schema.status ?? 200]: { description: 'Success', schema: schema.response } },
+      responses: schema.responses ?? { [schema.status ?? 200]: { schema: schema.response } },
       security: schema.security,
     });
 
@@ -60,58 +72,54 @@ export const createRouter = (): CustomRouter => {
     if (schema.query) middlewares.push(validateQuery(schema.query));
     if (schema.params) middlewares.push(validateParams(schema.params));
 
-    expressRouter[method](path, ...middlewares, ...expressHandlers);
-
+    expressRouter[method](path, ...middlewares, ...(handlers as RequestHandler[]));
     return self;
-  }
+  };
 
-  const self = {
+  const on =
+    (method: HttpMethod): RouteMethod =>
+    (path, schema, ...handlers) =>
+      addRoute(method, path, schema, handlers);
+
+  const self: CustomRouter = {
     expressRouter,
     routes,
-    get: <TReq extends Request = Request>(path: string, schema: RouteShorthand, ...handlers: RouteHandler<TReq>[]) =>
-      addRoute('get', path, schema, handlers),
-    post: <TReq extends Request = Request>(path: string, schema: RouteShorthand, ...handlers: RouteHandler<TReq>[]) =>
-      addRoute('post', path, schema, handlers),
-    put: <TReq extends Request = Request>(path: string, schema: RouteShorthand, ...handlers: RouteHandler<TReq>[]) =>
-      addRoute('put', path, schema, handlers),
-    delete: <TReq extends Request = Request>(path: string, schema: RouteShorthand, ...handlers: RouteHandler<TReq>[]) =>
-      addRoute('delete', path, schema, handlers),
-    patch: <TReq extends Request = Request>(path: string, schema: RouteShorthand, ...handlers: RouteHandler<TReq>[]) =>
-      addRoute('patch', path, schema, handlers),
-  } as CustomRouter;
+    get: on('get'),
+    post: on('post'),
+    put: on('put'),
+    delete: on('delete'),
+    patch: on('patch'),
+  };
 
   return self;
 };
 
-export const mountRouter = (app: express.IRouter, prefix: string, customRouter: CustomRouter) => {
-  app.use(prefix, customRouter.expressRouter);
+const joinPath = (prefix: string, path: string) => `/${[prefix, path].join('/').split('/').filter(Boolean).join('/')}`;
 
-  for (const route of customRouter.routes) {
-    const { method, path, request, responses, summary, description, security } = route;
-    const combined = `${prefix.replace(/\/$/, '')}/${path.replace(/^\//, '')}`.replace(/\/$/, '') || '/';
-    const openApiPath = combined.replace(/:([^/]+)/g, '{$1}');
+export const toOpenApiPaths = (prefix: string, routes: RouteDefinition[]): RouteConfig[] =>
+  routes.map((route) => {
+    const request: RouteConfig['request'] = {};
+    if (route.request.body) request.body = { content: { 'application/json': { schema: route.request.body } } };
+    if (route.request.query) request.query = route.request.query;
+    if (route.request.params) request.params = route.request.params;
 
-    const openApiRequest: RouteConfig['request'] = {};
-    if (request?.body) openApiRequest.body = { content: { 'application/json': { schema: request.body } } };
-    if (request?.query) openApiRequest.query = request.query;
-    if (request?.params) openApiRequest.params = request.params;
-
-    const openApiResponses: RouteConfig['responses'] = {};
-    for (const [code, res] of Object.entries(responses)) {
-      openApiResponses[Number(code)] = {
-        description: res.description,
-        content: res.schema ? { 'application/json': { schema: res.schema } } : undefined,
+    const responses: RouteConfig['responses'] = {};
+    for (const [status, spec] of Object.entries(route.responses)) {
+      responses[Number(status)] = {
+        description: spec.description ?? 'Success',
+        content: spec.schema ? { 'application/json': { schema: spec.schema } } : undefined,
       };
     }
 
-    registeredPaths.push({
-      method,
-      path: openApiPath,
-      summary,
-      description,
-      request: openApiRequest,
-      responses: openApiResponses,
-      security: security ? [{ cookieAuth: [] }] : undefined,
-    });
-  }
-};
+    return {
+      method: route.method,
+      path: joinPath(prefix, route.path).replace(/:([^/]+)/g, '{$1}'),
+      summary: route.summary,
+      description: route.description,
+      request,
+      responses,
+      security: route.security ? [{ cookieAuth: [] }] : undefined,
+    };
+  });
+
+export const mountRouter = (app: express.IRouter, prefix: string, customRouter: CustomRouter) => app.use(prefix, customRouter.expressRouter);

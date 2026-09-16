@@ -25,12 +25,25 @@ export const createSession = async (userId: string): Promise<string> => {
 };
 
 export const getSessionUserId = async (token: string): Promise<string | null> => {
+  const now = Date.now();
+  const tokenHash = hashToken(token);
+
   const [session] = await db
-    .select({ userId: sessions.userId })
+    .select({ userId: sessions.userId, expiresAt: sessions.expiresAt })
     .from(sessions)
-    .where(and(eq(sessions.tokenHash, hashToken(token)), gt(sessions.expiresAt, new Date())))
+    .where(and(eq(sessions.tokenHash, tokenHash), gt(sessions.expiresAt, new Date(now))))
     .limit(1);
-  return session?.userId ?? null;
+  if (!session) return null;
+
+  // Slide expiry only once past the halfway mark to avoid a write on every request.
+  if (session.expiresAt.getTime() - now < SESSION_TTL_MS / 2) {
+    await db
+      .update(sessions)
+      .set({ expiresAt: new Date(now + SESSION_TTL_MS) })
+      .where(eq(sessions.tokenHash, tokenHash));
+  }
+
+  return session.userId;
 };
 
 export const destroySession = async (token: string): Promise<void> => {

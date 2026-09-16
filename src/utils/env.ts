@@ -9,6 +9,8 @@ const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().positive().default(8008),
   DATABASE_URL: z.string().url(),
+  DATABASE_POOL_MAX: z.coerce.number().int().positive().default(10),
+  DATABASE_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
   CORS_ORIGIN: z
     .string()
     .default('')

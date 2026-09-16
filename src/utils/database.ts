@@ -4,17 +4,18 @@ import postgres from 'postgres';
 import * as schema from '@/models';
 import { env } from '@/utils/env';
 
-// Disable prefetch for compatibility with transaction poolers (like PgBouncer/Supabase)
-export const client = postgres(env.DATABASE_URL, { prepare: false });
+export const client = postgres(env.DATABASE_URL, {
+  // Disable prepared statements for compatibility with transaction poolers (PgBouncer/Supabase).
+  prepare: false,
+  max: env.DATABASE_POOL_MAX,
+  idle_timeout: 30,
+  connect_timeout: 10,
+  connection: { statement_timeout: env.DATABASE_STATEMENT_TIMEOUT_MS },
+});
 
 export const db = drizzle(client, { schema });
 
 export async function testConnection() {
-  try {
-    await client`SELECT 1`;
-    console.log('Database connection has been established successfully.');
-  } catch (error) {
-    console.error('Unable to connect to the database:', error);
-    throw error;
-  }
+  await client`SELECT 1`;
+  console.log('Database connection established.');
 }
