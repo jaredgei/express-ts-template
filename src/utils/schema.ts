@@ -1,5 +1,5 @@
-import { getTableColumns, BuildExtraConfigColumns } from 'drizzle-orm';
-import { pgTable, PgColumnBuilderBase, PgTableExtraConfigValue, uuid, timestamp } from 'drizzle-orm/pg-core';
+import { BuildExtraConfigColumns, getTableColumns } from 'drizzle-orm';
+import { PgColumnBuilderBase, pgTable, PgTableExtraConfigValue, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { createSelectSchema } from 'drizzle-zod';
 
 const baseColumns = {

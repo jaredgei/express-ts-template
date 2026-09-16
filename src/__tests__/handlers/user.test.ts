@@ -1,11 +1,13 @@
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
-import request from 'supertest';
 import express, { type Express } from 'express';
 import { rateLimit } from 'express-rate-limit';
+import request from 'supertest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+
+import { users } from '@/models/user';
+
+import { client, db } from '@/utils/database';
 
 import { createApp, errorHandler } from '@/app';
-import { db, client } from '@/utils/database';
-import { users } from '@/models/user';
 
 let app: Express;
 
@@ -39,7 +41,6 @@ describe('POST /api/users/register', () => {
     expect(res.status).toBe(201);
     expect(res.body.user).toMatchObject({ name: testUser.name, email: testUser.email });
     expect(res.body.user).not.toHaveProperty('passwordHash');
-    expect(res.body).not.toHaveProperty('accessToken');
     expect(sessionCookie(res)?.[0]).toMatch(/sid=/);
   });
 

@@ -1,8 +1,9 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
-import * as schema from '@/models';
 import { env } from '@/utils/env';
+
+import * as schema from '@/models';
 
 export const client = postgres(env.DATABASE_URL, {
   // Disable prepared statements for compatibility with transaction poolers (PgBouncer/Supabase).

@@ -95,7 +95,7 @@ Modules are imported via the `@/*` alias (`@/utils/database`) rather than deep r
 - **Type-safe route builder** — `createRouter` registers a route's method, path, Zod schemas, status, summary, and auth flag once. Validation middleware is attached automatically and the OpenAPI spec is generated from the same source.
 - **Model factory** — `createModel` gives every table `id` (UUID), `createdAt`, and `updatedAt`, and derives `select`/`insert` Zod schemas via `drizzle-zod`.
 - **Session-based auth** — register/login/logout plus a protected `/me` endpoint, backed by server-side sessions in Postgres over an `httpOnly` cookie.
-- **Auto-generated API docs** — Swagger UI at `/docs`, built from the route registry, with a configured bearer/cookie security scheme.
+- **Auto-generated API docs** — Swagger UI at `/docs`, built from the route registry, with a configured cookie security scheme.
 - **Structured request logging** — JSON access logs with method, path, status, and latency.
 - **Hardened error handling** — a global handler returns JSON, logs full detail server-side, and never leaks internal messages for 5xx responses.
 - **Health checks** — `GET /health` (liveness) and `GET /ready` (readiness, pings the DB) for containers and load balancers.

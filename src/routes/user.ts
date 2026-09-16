@@ -1,20 +1,21 @@
 import {
+  getMeHandler,
   getUsersHandler,
   getUsersResponseSchema,
   listUsersQuerySchema,
-  registerHandler,
-  registerBodySchema,
-  userResponseSchema,
-  loginHandler,
   loginBodySchema,
+  loginHandler,
   logoutHandler,
   logoutResponseSchema,
-  getMeHandler,
-  errorResponseSchema,
+  registerBodySchema,
+  registerHandler,
+  userResponseSchema,
 } from '@/handlers/user';
+
 import { authenticate } from '@/middleware/auth';
 import { authRateLimiter } from '@/middleware/rateLimit';
-import { createRouter } from '@/utils/route';
+
+import { createRouter, errorResponseSchema } from '@/utils/route';
 
 const router = createRouter();
 

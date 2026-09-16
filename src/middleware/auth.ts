@@ -1,6 +1,6 @@
-import { Request, Response, NextFunction } from 'express';
+import { NextFunction, Request, Response } from 'express';
 
-import { SESSION_COOKIE, getSessionUserId } from '@/utils/session';
+import { getSessionUserId, SESSION_COOKIE } from '@/utils/session';
 
 declare module 'express-serve-static-core' {
   interface Request {
@@ -15,4 +15,9 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
   req.userId = userId;
   next();
+};
+
+export const requireUserId = (req: Request): string => {
+  if (!req.userId) throw new Error('requireUserId called without authenticate middleware');
+  return req.userId;
 };

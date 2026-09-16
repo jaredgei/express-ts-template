@@ -2,21 +2,22 @@ import path from 'path';
 
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
-import express, { Request, Response, NextFunction } from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 
-import logger from '@/middleware/logger';
 import userRouter from '@/routes/user';
+
+import logger, { logJson } from '@/middleware/logger';
+
 import { client } from '@/utils/database';
 import { env, isProduction } from '@/utils/env';
-import { MountedRouter, mountRouter } from '@/utils/route';
+import { MountedRouter } from '@/utils/route';
 
 export const errorHandler = (error: Error & { status?: number }, req: Request, res: Response, _next: NextFunction) => {
   const status = error.status ?? 500;
 
-  console.error(
-    JSON.stringify({
-      timestamp: new Date().toISOString(),
+  logJson(
+    {
       requestId: req.id,
       ip: req.ip,
       method: req.method,
@@ -24,7 +25,8 @@ export const errorHandler = (error: Error & { status?: number }, req: Request, r
       status,
       error: error.message,
       stack: error.stack,
-    }),
+    },
+    true,
   );
 
   res.status(status).json({ errors: [status < 500 ? error.message : 'Internal Server Error'] });
@@ -52,7 +54,7 @@ export const createApp = async () => {
   });
 
   const mounted: MountedRouter[] = [{ prefix: '/api/users', router: userRouter }];
-  for (const { prefix, router } of mounted) mountRouter(app, prefix, router);
+  for (const { prefix, router } of mounted) app.use(prefix, router.expressRouter);
 
   if (!isProduction) {
     const { serveSwaggerDocs } = await import('@/utils/swagger');

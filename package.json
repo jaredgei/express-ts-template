@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "lint": "eslint src",
-    "build": "tsc --build && tsc-alias -f",
+    "build": "tsc --build tsconfig.build.json && tsc-alias -f -p tsconfig.build.json",
     "start": "node dist/index.js",
     "setup:env": "node --input-type=commonjs -e \"const fs=require('fs');if(!fs.existsSync('.env'))fs.copyFileSync('.env.example','.env')\"",
     "predev": "npm run setup:env",
@@ -20,7 +20,15 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
-  "keywords": ["express", "typescript", "template", "drizzle", "postgres", "zod", "openapi"],
+  "keywords": [
+    "express",
+    "typescript",
+    "template",
+    "drizzle",
+    "postgres",
+    "zod",
+    "openapi"
+  ],
   "author": "Jared Geilich",
   "license": "ISC",
   "description": "Opinionated Express 5 + TypeScript + PostgreSQL API template with Zod validation, auto-generated OpenAPI docs, and session-based auth.",
@@ -48,6 +56,7 @@
     "drizzle-kit": "^0.31.10",
     "eslint": "^10.10.0",
     "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-simple-import-sort": "^14.0.0",
     "prettier": "^3.8.3",
     "supertest": "^7.2.2",
     "swagger-ui-express": "^5.0.1",

@@ -1,17 +1,17 @@
 import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
-import express, { Router, RequestHandler, Request, Response, NextFunction } from 'express';
+import express, { NextFunction, Request, RequestHandler, Response, Router } from 'express';
+import type { ParamsDictionary, Query } from 'express-serve-static-core';
 import { z, ZodObject, ZodRawShape } from 'zod';
 
-import { validateBody, validateQuery, validateParams } from '@/middleware/validator';
-
-type DefaultParams = Request extends Request<infer P> ? P : never;
-type DefaultQuery = Request extends Request<DefaultParams, unknown, unknown, infer Q> ? Q : never;
+import { validateBody, validateParams, validateQuery } from '@/middleware/validator';
 
 type HttpMethod = 'get' | 'post' | 'put' | 'delete' | 'patch';
 
 type ObjectSchema = ZodObject<ZodRawShape>;
 
 type ResponseSpec = { description?: string; schema?: ObjectSchema };
+
+export const errorResponseSchema = z.object({ errors: z.array(z.string()) });
 
 export type RouteShorthand = {
   body?: ObjectSchema;
@@ -25,8 +25,8 @@ export type RouteShorthand = {
   security?: boolean;
 };
 
-type InferParams<T> = T extends ObjectSchema ? z.infer<T> & DefaultParams : DefaultParams;
-type InferQuery<T> = T extends ObjectSchema ? z.infer<T> & DefaultQuery : DefaultQuery;
+type InferParams<T> = T extends ObjectSchema ? z.infer<T> & ParamsDictionary : ParamsDictionary;
+type InferQuery<T> = T extends ObjectSchema ? z.infer<T> & Query : Query;
 type InferBody<T> = T extends ObjectSchema ? z.infer<T> : unknown;
 
 type TypedRequest<S extends RouteShorthand> = Request<InferParams<S['params']>, unknown, InferBody<S['body']>, InferQuery<S['query']>>;
@@ -121,5 +121,3 @@ export const toOpenApiPaths = (prefix: string, routes: RouteDefinition[]): Route
       security: route.security ? [{ cookieAuth: [] }] : undefined,
     };
   });
-
-export const mountRouter = (app: express.IRouter, prefix: string, customRouter: CustomRouter) => app.use(prefix, customRouter.expressRouter);

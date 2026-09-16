@@ -2,10 +2,13 @@ import { eq } from 'drizzle-orm';
 import { Request, Response } from 'express';
 import { z } from 'zod';
 
-import { users, publicUserColumns, selectUserSchema } from '@/models/user';
-import { hashPassword, verifyPassword, dummyPasswordHash } from '@/utils/auth';
+import { publicUserColumns, selectUserSchema, users } from '@/models/user';
+
+import { requireUserId } from '@/middleware/auth';
+
+import { dummyPasswordHash, hashPassword, verifyPassword } from '@/utils/auth';
 import { db } from '@/utils/database';
-import { SESSION_COOKIE, sessionCookieOptions, createSession, destroySession } from '@/utils/session';
+import { createSession, destroySession, SESSION_COOKIE, sessionCookieOptions } from '@/utils/session';
 
 export const registerBodySchema = z.object({
   name: z.string().min(1, 'Name is required'),
@@ -28,8 +31,6 @@ export const userResponseSchema = z.object({ user: selectUserSchema });
 export const logoutResponseSchema = z.object({ success: z.boolean() });
 
 export const getUsersResponseSchema = z.object({ users: z.array(selectUserSchema) });
-
-export const errorResponseSchema = z.object({ errors: z.array(z.string()) });
 
 const startSession = async (res: Response, userId: string) => {
   res.cookie(SESSION_COOKIE, await createSession(userId), sessionCookieOptions);
@@ -79,8 +80,11 @@ export const logoutHandler = async (req: Request, res: Response) => {
 };
 
 export const getMeHandler = async (req: Request, res: Response) => {
-  if (!req.userId) return res.status(401).json({ errors: ['Unauthorized'] });
-  const [user] = await db.select(publicUserColumns).from(users).where(eq(users.id, req.userId)).limit(1);
+  const [user] = await db
+    .select(publicUserColumns)
+    .from(users)
+    .where(eq(users.id, requireUserId(req)))
+    .limit(1);
   if (!user) return res.status(404).json({ errors: ['User not found'] });
   res.json({ user });
 };

@@ -16,5 +16,5 @@
     "noUnusedParameters": true,
     "skipLibCheck": true
   },
-  "exclude": ["node_modules", "dist", "drizzle.config.ts", "vitest.config.mts", "src/__tests__"]
+  "exclude": ["node_modules", "dist", "drizzle.config.ts", "vitest.config.mts"]
 }

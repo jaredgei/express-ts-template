@@ -1,7 +1,8 @@
-import { createApp } from '@/app';
 import { client, testConnection } from '@/utils/database';
 import { env } from '@/utils/env';
 import { deleteExpiredSessions } from '@/utils/session';
+
+import { createApp } from '@/app';
 
 const SESSION_CLEANUP_INTERVAL_MS = 1000 * 60 * 60;
 
