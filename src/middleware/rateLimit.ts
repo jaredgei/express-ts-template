@@ -7,6 +7,6 @@ export const authRateLimiter = rateLimit({
   limit: 10,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  message: { errors: 'Too many attempts, please try again later' },
+  message: { errors: ['Too many attempts, please try again later'] },
   skip: () => isTest,
 });
