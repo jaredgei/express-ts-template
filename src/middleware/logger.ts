@@ -2,14 +2,13 @@ import crypto from 'crypto';
 
 import { NextFunction, Request, Response } from 'express';
 
+import { logJson } from '@/utils/logger';
+
 declare module 'express-serve-static-core' {
   interface Request {
     id: string;
   }
 }
-
-export const logJson = (fields: Record<string, unknown>, error = false) =>
-  (error ? console.error : console.log)(JSON.stringify({ timestamp: new Date().toISOString(), ...fields }));
 
 export default (req: Request, res: Response, next: NextFunction) => {
   req.id = req.get('x-request-id') ?? crypto.randomUUID();

@@ -1,9 +1,6 @@
 import { z } from 'zod';
 
-const booleanish = z
-  .enum(['true', 'false'])
-  .default('false')
-  .transform((value) => value === 'true');
+import { logJson } from '@/utils/logger';
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -11,6 +8,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   DATABASE_POOL_MAX: z.coerce.number().int().positive().default(10),
   DATABASE_STATEMENT_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
+  DATABASE_PREPARE: z.stringbool().default(true),
   CORS_ORIGIN: z
     .string()
     .default('')
@@ -20,18 +18,17 @@ const envSchema = z.object({
         .map((origin) => origin.trim())
         .filter(Boolean),
     ),
-  TRUST_PROXY: booleanish,
+  TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
   FRONTEND_DIR: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error('Invalid environment variables:', z.flattenError(parsed.error).fieldErrors);
+  logJson({ message: 'Invalid environment variables', fieldErrors: z.flattenError(parsed.error).fieldErrors }, true);
   throw new Error('Invalid environment variables');
 }
 
 export const env = parsed.data;
 
 export const isProduction = env.NODE_ENV === 'production';
-export const isTest = env.NODE_ENV === 'test';

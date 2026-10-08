@@ -4,20 +4,21 @@ import { z } from 'zod';
 
 import { publicUserColumns, selectUserSchema, users } from '@/models/user';
 
-import { requireUserId } from '@/middleware/auth';
+import { HttpError } from '@/middleware/error';
 
 import { dummyPasswordHash, hashPassword, verifyPassword } from '@/utils/auth';
 import { db } from '@/utils/database';
+import { TypedRequest } from '@/utils/route';
 import { createSession, destroySession, SESSION_COOKIE, sessionCookieOptions } from '@/utils/session';
 
 export const registerBodySchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  email: z.string().email('Invalid email address'),
+  name: z.string().min(1, 'Name is required').max(255),
+  email: z.email('Invalid email address').max(255),
   password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
 export const loginBodySchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.email('Invalid email address'),
   password: z.string().min(1, 'Password is required'),
 });
 
@@ -32,44 +33,36 @@ export const logoutResponseSchema = z.object({ success: z.boolean() });
 
 export const getUsersResponseSchema = z.object({ users: z.array(selectUserSchema) });
 
-const startSession = async (res: Response, userId: string) => {
+const startSession = async (req: Request, res: Response, userId: string) => {
+  const previousToken = req.cookies?.[SESSION_COOKIE];
+  if (previousToken) await destroySession(previousToken);
   res.cookie(SESSION_COOKIE, await createSession(userId), sessionCookieOptions);
 };
 
-export const getUsersHandler = async (req: Request<unknown, unknown, unknown, z.infer<typeof listUsersQuerySchema>>, res: Response) => {
+export const getUsersHandler = async (req: TypedRequest<{ query: typeof listUsersQuerySchema }>, res: Response) => {
   const { limit, offset } = req.query;
   res.json({ users: await db.select(publicUserColumns).from(users).limit(limit).offset(offset) });
 };
 
-export const registerHandler = async (req: Request<unknown, unknown, z.infer<typeof registerBodySchema>>, res: Response) => {
+export const registerHandler = async (req: TypedRequest<{ body: typeof registerBodySchema }>, res: Response) => {
   const { name, email, password } = req.body;
-
-  const [existing] = await db.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
-  if (existing) {
-    await verifyPassword(password, await dummyPasswordHash());
-    return res.status(400).json({ errors: ['Email is already registered'] });
-  }
 
   const passwordHash = await hashPassword(password);
   const [user] = await db.insert(users).values({ name, email, passwordHash }).returning(publicUserColumns);
 
-  await startSession(res, user.id);
+  await startSession(req, res, user.id);
   res.status(201).json({ user });
 };
 
-export const loginHandler = async (req: Request<unknown, unknown, z.infer<typeof loginBodySchema>>, res: Response) => {
+export const loginHandler = async (req: TypedRequest<{ body: typeof loginBodySchema }>, res: Response) => {
   const { email, password } = req.body;
 
-  const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
-  if (!user) {
-    await verifyPassword(password, await dummyPasswordHash());
-    return res.status(401).json({ errors: ['Invalid email or password'] });
-  }
-  if (!(await verifyPassword(password, user.passwordHash))) return res.status(401).json({ errors: ['Invalid email or password'] });
+  const [match] = await db.select({ user: publicUserColumns, passwordHash: users.passwordHash }).from(users).where(eq(users.email, email)).limit(1);
+  const valid = await verifyPassword(password, match?.passwordHash ?? (await dummyPasswordHash()));
+  if (!match || !valid) throw new HttpError(401, 'Invalid email or password');
 
-  const { passwordHash: _, ...safeUser } = user;
-  await startSession(res, safeUser.id);
-  res.json({ user: safeUser });
+  await startSession(req, res, match.user.id);
+  res.json({ user: match.user });
 };
 
 export const logoutHandler = async (req: Request, res: Response) => {
@@ -79,12 +72,8 @@ export const logoutHandler = async (req: Request, res: Response) => {
   res.json({ success: true });
 };
 
-export const getMeHandler = async (req: Request, res: Response) => {
-  const [user] = await db
-    .select(publicUserColumns)
-    .from(users)
-    .where(eq(users.id, requireUserId(req)))
-    .limit(1);
-  if (!user) return res.status(404).json({ errors: ['User not found'] });
+export const getMeHandler = async (req: TypedRequest<{ security: true }>, res: Response) => {
+  const [user] = await db.select(publicUserColumns).from(users).where(eq(users.id, req.userId)).limit(1);
+  if (!user) throw new HttpError(404, 'User not found');
   res.json({ user });
 };

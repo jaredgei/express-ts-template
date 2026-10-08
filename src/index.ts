@@ -1,5 +1,6 @@
 import { client, testConnection } from '@/utils/database';
 import { env } from '@/utils/env';
+import { logJson } from '@/utils/logger';
 import { deleteExpiredSessions } from '@/utils/session';
 
 import { createApp } from '@/app';
@@ -12,13 +13,19 @@ const SESSION_CLEANUP_INTERVAL_MS = 1000 * 60 * 60;
     const app = await createApp();
 
     await deleteExpiredSessions();
-    const cleanup = setInterval(() => deleteExpiredSessions().catch(console.error), SESSION_CLEANUP_INTERVAL_MS);
+    const cleanup = setInterval(
+      () => deleteExpiredSessions().catch((error) => logJson({ message: 'Session cleanup failed', error: String(error) }, true)),
+      SESSION_CLEANUP_INTERVAL_MS,
+    );
     cleanup.unref();
 
-    const server = app.listen(env.PORT, () => console.log(`Server is listening on port ${env.PORT}`));
+    const server = app.listen(env.PORT, () => logJson({ message: `Server is listening on port ${env.PORT}` }));
 
+    let shuttingDown = false;
     const shutdown = (signal: string) => {
-      console.log(`${signal} received, shutting down`);
+      if (shuttingDown) return;
+      shuttingDown = true;
+      logJson({ message: `${signal} received, shutting down` });
       clearInterval(cleanup);
       const force = setTimeout(() => process.exit(1), 10000);
       force.unref();
@@ -26,7 +33,7 @@ const SESSION_CLEANUP_INTERVAL_MS = 1000 * 60 * 60;
         try {
           await client.end({ timeout: 5 });
         } catch (error) {
-          console.error(error);
+          logJson({ message: 'Failed to close database pool', error: String(error) }, true);
         } finally {
           clearTimeout(force);
           process.exit(0);
@@ -37,7 +44,7 @@ const SESSION_CLEANUP_INTERVAL_MS = 1000 * 60 * 60;
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
   } catch (error) {
-    console.error(error);
+    logJson({ message: 'Startup failed', error: String(error) }, true);
     process.exit(1);
   }
 })();

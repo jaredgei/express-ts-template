@@ -2,12 +2,12 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import { env } from '@/utils/env';
+import { logJson } from '@/utils/logger';
 
 import * as schema from '@/models';
 
 export const client = postgres(env.DATABASE_URL, {
-  // Disable prepared statements for compatibility with transaction poolers (PgBouncer/Supabase).
-  prepare: false,
+  prepare: env.DATABASE_PREPARE,
   max: env.DATABASE_POOL_MAX,
   idle_timeout: 30,
   connect_timeout: 10,
@@ -18,5 +18,5 @@ export const db = drizzle(client, { schema });
 
 export async function testConnection() {
   await client`SELECT 1`;
-  console.log('Database connection established.');
+  logJson({ message: 'Database connection established' });
 }

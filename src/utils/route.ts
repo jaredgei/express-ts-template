@@ -1,23 +1,24 @@
 import type { RouteConfig } from '@asteasolutions/zod-to-openapi';
 import express, { NextFunction, Request, RequestHandler, Response, Router } from 'express';
 import type { ParamsDictionary, Query } from 'express-serve-static-core';
-import { z, ZodObject, ZodRawShape } from 'zod';
+import { z, ZodObject, ZodRawShape, ZodType } from 'zod';
 
+import { authenticate } from '@/middleware/auth';
 import { validateBody, validateParams, validateQuery } from '@/middleware/validator';
 
 type HttpMethod = 'get' | 'post' | 'put' | 'delete' | 'patch';
 
 type ObjectSchema = ZodObject<ZodRawShape>;
 
-type ResponseSpec = { description?: string; schema?: ObjectSchema };
+type ResponseSpec = { description?: string; schema?: ZodType };
 
-export const errorResponseSchema = z.object({ errors: z.array(z.string()) });
+export const errorResponseSchema = z.object({ errors: z.array(z.object({ message: z.string(), field: z.string().optional() })) });
 
 export type RouteShorthand = {
-  body?: ObjectSchema;
+  body?: ZodType;
   query?: ObjectSchema;
   params?: ObjectSchema;
-  response?: ObjectSchema;
+  response?: ZodType;
   status?: number;
   responses?: Record<number, ResponseSpec>;
   summary?: string;
@@ -27,9 +28,11 @@ export type RouteShorthand = {
 
 type InferParams<T> = T extends ObjectSchema ? z.infer<T> & ParamsDictionary : ParamsDictionary;
 type InferQuery<T> = T extends ObjectSchema ? z.infer<T> & Query : Query;
-type InferBody<T> = T extends ObjectSchema ? z.infer<T> : unknown;
+type InferBody<T> = T extends ZodType ? z.infer<T> : unknown;
+type InferAuth<S extends RouteShorthand> = S['security'] extends true ? { userId: string } : unknown;
 
-type TypedRequest<S extends RouteShorthand> = Request<InferParams<S['params']>, unknown, InferBody<S['body']>, InferQuery<S['query']>>;
+export type TypedRequest<S extends RouteShorthand> = Request<InferParams<S['params']>, unknown, InferBody<S['body']>, InferQuery<S['query']>> &
+  InferAuth<S>;
 
 type RouteHandler<S extends RouteShorthand> = (req: TypedRequest<S>, res: Response, next: NextFunction) => unknown;
 
@@ -38,12 +41,12 @@ export type RouteDefinition = {
   path: string;
   summary: string;
   description?: string;
-  request: { body?: ObjectSchema; query?: ObjectSchema; params?: ObjectSchema };
+  request: Pick<RouteShorthand, 'body' | 'query' | 'params'>;
   responses: Record<number, ResponseSpec>;
   security?: boolean;
 };
 
-type RouteMethod = <S extends RouteShorthand>(path: string, schema: S, ...handlers: (RouteHandler<S> | RequestHandler)[]) => CustomRouter;
+type RouteMethod = <S extends RouteShorthand>(path: string, schema: S, ...handlers: RouteHandler<S>[]) => CustomRouter;
 
 export type CustomRouter = {
   expressRouter: Router;
@@ -56,7 +59,7 @@ export const createRouter = (): CustomRouter => {
   const expressRouter = express.Router();
   const routes: RouteDefinition[] = [];
 
-  const addRoute = <S extends RouteShorthand>(method: HttpMethod, path: string, schema: S, handlers: (RouteHandler<S> | RequestHandler)[]) => {
+  const addRoute = <S extends RouteShorthand>(method: HttpMethod, path: string, schema: S, handlers: RouteHandler<S>[]) => {
     routes.push({
       method,
       path,
@@ -68,6 +71,7 @@ export const createRouter = (): CustomRouter => {
     });
 
     const middlewares: RequestHandler[] = [];
+    if (schema.security) middlewares.push(authenticate);
     if (schema.body) middlewares.push(validateBody(schema.body));
     if (schema.query) middlewares.push(validateQuery(schema.query));
     if (schema.params) middlewares.push(validateParams(schema.params));

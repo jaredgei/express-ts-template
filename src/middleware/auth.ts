@@ -1,6 +1,8 @@
 import { NextFunction, Request, Response } from 'express';
 
-import { getSessionUserId, SESSION_COOKIE } from '@/utils/session';
+import { HttpError } from '@/middleware/error';
+
+import { getSession, SESSION_COOKIE, sessionCookieOptions } from '@/utils/session';
 
 declare module 'express-serve-static-core' {
   interface Request {
@@ -10,14 +12,10 @@ declare module 'express-serve-static-core' {
 
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
   const token = req.cookies?.[SESSION_COOKIE];
-  const userId = token ? await getSessionUserId(token) : null;
-  if (!userId) return res.status(401).json({ errors: ['Unauthorized'] });
+  const session = token ? await getSession(token) : null;
+  if (!session) throw new HttpError(401, 'Unauthorized');
 
-  req.userId = userId;
+  if (session.renewed) res.cookie(SESSION_COOKIE, token, sessionCookieOptions);
+  req.userId = session.userId;
   next();
-};
-
-export const requireUserId = (req: Request): string => {
-  if (!req.userId) throw new Error('requireUserId called without authenticate middleware');
-  return req.userId;
 };

@@ -2,10 +2,15 @@ import { BuildExtraConfigColumns, getTableColumns } from 'drizzle-orm';
 import { PgColumnBuilderBase, pgTable, PgTableExtraConfigValue, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { createSelectSchema } from 'drizzle-zod';
 
+export const timestamptz = (name: string) => timestamp(name, { withTimezone: true });
+
 const baseColumns = {
   id: uuid('id').primaryKey().defaultRandom(),
-  createdAt: timestamp('created_at').defaultNow().notNull(),
-  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  createdAt: timestamptz('created_at').defaultNow().notNull(),
+  updatedAt: timestamptz('updated_at')
+    .defaultNow()
+    .notNull()
+    .$onUpdate(() => new Date()),
 };
 
 type BaseColumns = typeof baseColumns;

@@ -12,7 +12,6 @@ import {
   userResponseSchema,
 } from '@/handlers/user';
 
-import { authenticate } from '@/middleware/auth';
 import { authRateLimiter } from '@/middleware/rateLimit';
 
 import { createRouter, errorResponseSchema } from '@/utils/route';
@@ -27,7 +26,8 @@ router.post(
     body: registerBodySchema,
     responses: {
       201: { schema: userResponseSchema },
-      400: { description: 'Email already registered or invalid input', schema: errorResponseSchema },
+      400: { description: 'Invalid input', schema: errorResponseSchema },
+      409: { description: 'Email already registered', schema: errorResponseSchema },
       429: { description: 'Too many attempts', schema: errorResponseSchema },
     },
     summary: 'Register a new user',
@@ -63,7 +63,6 @@ router.get(
     summary: 'Fetch authenticated user profile',
     security: true,
   },
-  authenticate,
   getMeHandler,
 );
 

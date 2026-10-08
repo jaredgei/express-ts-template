@@ -1,17 +1,10 @@
 import { NextFunction, Request, Response } from 'express';
-import { z, ZodError, ZodObject, ZodRawShape } from 'zod';
+import { ZodError, ZodObject, ZodRawShape, ZodType } from 'zod';
 
-export const formatZodError = (error: ZodError): string[] => {
-  const { formErrors, fieldErrors } = z.flattenError(error);
-  return [
-    ...formErrors,
-    ...Object.values(fieldErrors)
-      .flat()
-      .filter((message) => typeof message === 'string'),
-  ];
-};
+export const formatZodError = (error: ZodError) =>
+  error.issues.map(({ message, path }) => (path.length ? { message, field: path.join('.') } : { message }));
 
-const validate = (key: 'body' | 'query' | 'params', schema: ZodObject<ZodRawShape>) => (req: Request, res: Response, next: NextFunction) => {
+const validate = (key: 'body' | 'query' | 'params', schema: ZodType) => (req: Request, res: Response, next: NextFunction) => {
   const result = schema.safeParse(req[key]);
   if (!result.success) return res.status(400).json({ errors: formatZodError(result.error) });
 
@@ -21,6 +14,6 @@ const validate = (key: 'body' | 'query' | 'params', schema: ZodObject<ZodRawShap
   next();
 };
 
-export const validateBody = (schema: ZodObject<ZodRawShape>) => validate('body', schema);
+export const validateBody = (schema: ZodType) => validate('body', schema);
 export const validateQuery = (schema: ZodObject<ZodRawShape>) => validate('query', schema);
 export const validateParams = (schema: ZodObject<ZodRawShape>) => validate('params', schema);

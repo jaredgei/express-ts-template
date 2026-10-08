@@ -1,13 +1,18 @@
+import crypto from 'crypto';
+
+import { eq } from 'drizzle-orm';
 import express, { type Express } from 'express';
-import { rateLimit } from 'express-rate-limit';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { users } from '@/models/user';
+import { sessions } from '@/models/session';
+
+import { errorHandler } from '@/middleware/error';
+import { authRateLimitStore } from '@/middleware/rateLimit';
 
 import { client, db } from '@/utils/database';
 
-import { createApp, errorHandler } from '@/app';
+import { createApp } from '@/app';
 
 let app: Express;
 
@@ -15,15 +20,16 @@ beforeAll(async () => {
   app = await createApp();
 });
 
+let testUser: { name: string; email: string; password: string };
+
 beforeEach(async () => {
-  await db.delete(users);
+  testUser = { name: 'Test User', email: `${crypto.randomUUID()}@example.com`, password: 'password123' };
+  await authRateLimitStore.resetAll();
 });
 
 afterAll(async () => {
   await client.end();
 });
-
-const testUser = { name: 'Test User', email: 'test@example.com', password: 'password123' };
 
 const sessionCookie = (res: request.Response) => res.headers['set-cookie'];
 
@@ -44,17 +50,15 @@ describe('POST /api/users/register', () => {
     expect(sessionCookie(res)?.[0]).toMatch(/sid=/);
   });
 
-  it('rejects duplicate emails', async () => {
-    await request(app).post('/api/users/register').send(testUser);
-    const res = await request(app)
-      .post('/api/users/register')
-      .send({ ...testUser, name: 'Other' });
-    expect(res.status).toBe(400);
+  it('rejects duplicate emails, including concurrent ones, with 409', async () => {
+    const results = await Promise.all([1, 2, 3].map(() => request(app).post('/api/users/register').send(testUser)));
+    expect(results.map((res) => res.status).sort()).toEqual([201, 409, 409]);
   });
 
-  it('validates required fields', async () => {
-    const res = await request(app).post('/api/users/register').send({ email: 'test@example.com' });
+  it('reports validation errors per field', async () => {
+    const res = await request(app).post('/api/users/register').send({ email: testUser.email });
     expect(res.status).toBe(400);
+    expect(res.body.errors).toContainEqual(expect.objectContaining({ field: 'name' }));
   });
 });
 
@@ -76,8 +80,25 @@ describe('POST /api/users/login', () => {
   });
 
   it('rejects non-existent email', async () => {
-    const res = await request(app).post('/api/users/login').send({ email: 'nobody@example.com', password: 'password123' });
+    const res = await request(app)
+      .post('/api/users/login')
+      .send({ email: `${crypto.randomUUID()}@example.com`, password: 'password123' });
     expect(res.status).toBe(401);
+  });
+
+  it('revokes the previous session on re-login', async () => {
+    const [previousCookie] = sessionCookie(await request(app).post('/api/users/login').send(testUser));
+    await request(app).post('/api/users/login').set('Cookie', previousCookie).send(testUser);
+
+    expect((await request(app).get('/api/users/me').set('Cookie', previousCookie)).status).toBe(401);
+  });
+
+  it('rate limits repeated attempts', async () => {
+    await authRateLimitStore.resetAll();
+    const attempt = () => request(app).post('/api/users/login').send({ email: testUser.email, password: 'wrong' });
+    for (let n = 0; n < 9; n++) await attempt();
+    expect((await attempt()).status).toBe(401);
+    expect((await attempt()).status).toBe(429);
   });
 });
 
@@ -89,6 +110,19 @@ describe('GET /api/users/me', () => {
     expect(res.status).toBe(200);
     expect(res.body.user.email).toBe(testUser.email);
     expect(res.body.user).not.toHaveProperty('passwordHash');
+  });
+
+  it('reissues the session cookie once the session slides', async () => {
+    const agent = request.agent(app);
+    const { body } = await agent.post('/api/users/register').send(testUser);
+    expect(sessionCookie(await agent.get('/api/users/me'))).toBeUndefined();
+
+    await db
+      .update(sessions)
+      .set({ expiresAt: new Date(Date.now() + 60_000) })
+      .where(eq(sessions.userId, body.user.id));
+
+    expect(sessionCookie(await agent.get('/api/users/me'))?.[0]).toMatch(/sid=/);
   });
 
   it('rejects unauthenticated requests', async () => {
@@ -117,7 +151,7 @@ describe('GET /api/users', () => {
     for (const n of [1, 2, 3])
       await request(app)
         .post('/api/users/register')
-        .send({ ...testUser, email: `user${n}@example.com` });
+        .send({ ...testUser, email: `${n}-${testUser.email}` });
 
     const res = await request(app).get('/api/users?limit=2&offset=0');
     expect(res.status).toBe(200);
@@ -128,7 +162,7 @@ describe('GET /api/users', () => {
   it('rejects an invalid limit', async () => {
     const res = await request(app).get('/api/users?limit=999');
     expect(res.status).toBe(400);
-    expect(Array.isArray(res.body.errors)).toBe(true);
+    expect(res.body.errors).toEqual([expect.objectContaining({ field: 'limit' })]);
   });
 });
 
@@ -136,7 +170,7 @@ describe('Unknown API routes', () => {
   it('returns a JSON 404', async () => {
     const res = await request(app).get('/api/users/does-not-exist');
     expect(res.status).toBe(404);
-    expect(res.body).toEqual({ errors: ['Not found'] });
+    expect(res.body).toEqual({ errors: [{ message: 'Not found' }] });
   });
 });
 
@@ -150,19 +184,8 @@ describe('Global error handler', () => {
 
     const res = await request(failing).get('/boom');
     expect(res.status).toBe(500);
-    expect(res.body).toEqual({ errors: ['Internal Server Error'] });
+    expect(res.body).toEqual({ errors: [{ message: 'Internal Server Error' }] });
     expect(res.body).not.toHaveProperty('stack');
     expect(JSON.stringify(res.body)).not.toContain('secret database credentials');
-  });
-});
-
-describe('Auth rate limiter', () => {
-  it('blocks requests once the limit is exceeded', async () => {
-    const limited = express();
-    limited.post('/try', rateLimit({ windowMs: 60_000, limit: 1, legacyHeaders: false }), (_req, res) => res.status(200).json({ ok: true }));
-
-    const agent = request.agent(limited);
-    expect((await agent.post('/try')).status).toBe(200);
-    expect((await agent.post('/try')).status).toBe(429);
   });
 });
