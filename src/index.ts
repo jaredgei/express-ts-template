@@ -1,5 +1,6 @@
 import { client, testConnection } from '@/utils/database';
 import { env } from '@/utils/env';
+import { lifecycle } from '@/utils/lifecycle';
 import { logJson } from '@/utils/logger';
 import { deleteExpiredSessions } from '@/utils/session';
 
@@ -21,10 +22,9 @@ const SESSION_CLEANUP_INTERVAL_MS = 1000 * 60 * 60;
 
     const server = app.listen(env.PORT, () => logJson({ message: `Server is listening on port ${env.PORT}` }));
 
-    let shuttingDown = false;
     const shutdown = (signal: string) => {
-      if (shuttingDown) return;
-      shuttingDown = true;
+      if (lifecycle.shuttingDown) return;
+      lifecycle.shuttingDown = true;
       logJson({ message: `${signal} received, shutting down` });
       clearInterval(cleanup);
       const force = setTimeout(() => process.exit(1), 10000);

@@ -10,8 +10,11 @@ declare module 'express-serve-static-core' {
   }
 }
 
+const REQUEST_ID_PATTERN = /^[\w-]{1,128}$/;
+
 export default (req: Request, res: Response, next: NextFunction) => {
-  req.id = req.get('x-request-id') ?? crypto.randomUUID();
+  const provided = req.get('x-request-id');
+  req.id = provided && REQUEST_ID_PATTERN.test(provided) ? provided : crypto.randomUUID();
   res.setHeader('x-request-id', req.id);
   const start = performance.now();
 

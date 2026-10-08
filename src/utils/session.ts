@@ -7,13 +7,14 @@ import { sessions } from '@/models/session';
 import { db } from '@/utils/database';
 import { isProduction } from '@/utils/env';
 
-export const SESSION_COOKIE = 'sid';
+export const SESSION_COOKIE = isProduction ? '__Host-sid' : 'sid';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 
 export const sessionCookieOptions = {
   httpOnly: true,
   secure: isProduction,
   sameSite: 'lax' as const,
+  path: '/',
   maxAge: SESSION_TTL_MS,
 };
 

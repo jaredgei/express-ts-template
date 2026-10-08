@@ -8,7 +8,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { sessions } from '@/models/session';
 
 import { errorHandler } from '@/middleware/error';
-import { authRateLimitStore } from '@/middleware/rateLimit';
+import { loginRateLimitStore, registerRateLimitStore } from '@/middleware/rateLimit';
 
 import { client, db } from '@/utils/database';
 
@@ -24,7 +24,7 @@ let testUser: { name: string; email: string; password: string };
 
 beforeEach(async () => {
   testUser = { name: 'Test User', email: `${crypto.randomUUID()}@example.com`, password: 'password123' };
-  await authRateLimitStore.resetAll();
+  await Promise.all([registerRateLimitStore.resetAll(), loginRateLimitStore.resetAll()]);
 });
 
 afterAll(async () => {
@@ -74,6 +74,12 @@ describe('POST /api/users/login', () => {
     expect(sessionCookie(res)?.[0]).toMatch(/sid=/);
   });
 
+  it('matches the email case-insensitively', async () => {
+    const res = await request(app).post('/api/users/login').send({ email: testUser.email.toUpperCase(), password: testUser.password });
+    expect(res.status).toBe(200);
+    expect(res.body.user.email).toBe(testUser.email);
+  });
+
   it('rejects invalid password', async () => {
     const res = await request(app).post('/api/users/login').send({ email: testUser.email, password: 'wrong' });
     expect(res.status).toBe(401);
@@ -94,7 +100,7 @@ describe('POST /api/users/login', () => {
   });
 
   it('rate limits repeated attempts', async () => {
-    await authRateLimitStore.resetAll();
+    await loginRateLimitStore.resetAll();
     const attempt = () => request(app).post('/api/users/login').send({ email: testUser.email, password: 'wrong' });
     for (let n = 0; n < 9; n++) await attempt();
     expect((await attempt()).status).toBe(401);
@@ -147,22 +153,28 @@ describe('POST /api/users/logout', () => {
 });
 
 describe('GET /api/users', () => {
-  it('paginates with limit and offset', async () => {
-    for (const n of [1, 2, 3])
-      await request(app)
-        .post('/api/users/register')
-        .send({ ...testUser, email: `${n}-${testUser.email}` });
+  it('paginates in a stable order for an authenticated client', async () => {
+    const agent = request.agent(app);
+    await agent.post('/api/users/register').send(testUser);
 
-    const res = await request(app).get('/api/users?limit=2&offset=0');
+    const res = await agent.get('/api/users?limit=2&offset=0');
     expect(res.status).toBe(200);
     expect(res.body.users).toHaveLength(2);
     expect(res.body.users[0]).not.toHaveProperty('passwordHash');
+    const createdAt = res.body.users.map((user: { createdAt: string }) => user.createdAt);
+    expect(createdAt).toEqual([...createdAt].sort());
   });
 
   it('rejects an invalid limit', async () => {
-    const res = await request(app).get('/api/users?limit=999');
+    const agent = request.agent(app);
+    await agent.post('/api/users/register').send(testUser);
+    const res = await agent.get('/api/users?limit=999');
     expect(res.status).toBe(400);
     expect(res.body.errors).toEqual([expect.objectContaining({ field: 'limit' })]);
+  });
+
+  it('rejects unauthenticated requests', async () => {
+    expect((await request(app).get('/api/users')).status).toBe(401);
   });
 });
 
@@ -171,6 +183,29 @@ describe('Unknown API routes', () => {
     const res = await request(app).get('/api/users/does-not-exist');
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ errors: [{ message: 'Not found' }] });
+  });
+});
+
+describe('Request id', () => {
+  it('echoes a valid x-request-id and rejects a malformed one', async () => {
+    const valid = await request(app).get('/api/users/me').set('x-request-id', 'abc-123');
+    expect(valid.headers['x-request-id']).toBe('abc-123');
+
+    const malformed = await request(app).get('/api/users/me').set('x-request-id', 'has spaces!');
+    expect(malformed.headers['x-request-id']).not.toBe('has spaces!');
+    expect(malformed.headers['x-request-id']).toMatch(/^[\w-]+$/);
+  });
+});
+
+describe('Cross-origin protection', () => {
+  it('blocks a state-changing request from a disallowed origin', async () => {
+    const res = await request(app).post('/api/users/login').set('Origin', 'https://evil.example').send(testUser);
+    expect(res.status).toBe(403);
+  });
+
+  it('allows a safe GET regardless of origin', async () => {
+    const res = await request(app).get('/health').set('Origin', 'https://evil.example');
+    expect(res.status).toBe(200);
   });
 });
 

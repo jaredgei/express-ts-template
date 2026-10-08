@@ -14,6 +14,13 @@ type ResponseSpec = { description?: string; schema?: ZodType };
 
 export const errorResponseSchema = z.object({ errors: z.array(z.object({ message: z.string(), field: z.string().optional() })) });
 
+const defaultErrorResponses = (schema: RouteShorthand): Record<number, ResponseSpec> => {
+  const responses: Record<number, ResponseSpec> = {};
+  if (schema.body || schema.query || schema.params) responses[400] = { description: 'Invalid input', schema: errorResponseSchema };
+  if (schema.security) responses[401] = { description: 'Not authenticated', schema: errorResponseSchema };
+  return responses;
+};
+
 export type RouteShorthand = {
   body?: ZodType;
   query?: ObjectSchema;
@@ -34,7 +41,7 @@ type InferAuth<S extends RouteShorthand> = S['security'] extends true ? { userId
 export type TypedRequest<S extends RouteShorthand> = Request<InferParams<S['params']>, unknown, InferBody<S['body']>, InferQuery<S['query']>> &
   InferAuth<S>;
 
-type RouteHandler<S extends RouteShorthand> = (req: TypedRequest<S>, res: Response, next: NextFunction) => unknown;
+type Handler<S extends RouteShorthand> = (req: TypedRequest<S>, res: Response, next: NextFunction) => Promise<unknown> | unknown;
 
 export type RouteDefinition = {
   method: HttpMethod;
@@ -46,7 +53,7 @@ export type RouteDefinition = {
   security?: boolean;
 };
 
-type RouteMethod = <S extends RouteShorthand>(path: string, schema: S, ...handlers: RouteHandler<S>[]) => CustomRouter;
+type RouteMethod = <S extends RouteShorthand>(path: string, schema: S, ...handlers: Handler<S>[]) => CustomRouter;
 
 export type CustomRouter = {
   expressRouter: Router;
@@ -59,14 +66,18 @@ export const createRouter = (): CustomRouter => {
   const expressRouter = express.Router();
   const routes: RouteDefinition[] = [];
 
-  const addRoute = <S extends RouteShorthand>(method: HttpMethod, path: string, schema: S, handlers: RouteHandler<S>[]) => {
+  const addRoute = <S extends RouteShorthand>(method: HttpMethod, path: string, schema: S, handlers: Handler<S>[]) => {
     routes.push({
       method,
       path,
       summary: schema.summary ?? `${method.toUpperCase()} ${path}`,
       description: schema.description,
       request: { body: schema.body, query: schema.query, params: schema.params },
-      responses: schema.responses ?? { [schema.status ?? 200]: { schema: schema.response } },
+      responses: {
+        ...defaultErrorResponses(schema),
+        [schema.status ?? 200]: { schema: schema.response },
+        ...schema.responses,
+      },
       security: schema.security,
     });
 

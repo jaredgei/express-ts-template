@@ -12,27 +12,27 @@ import {
   userResponseSchema,
 } from '@/handlers/user';
 
-import { authRateLimiter } from '@/middleware/rateLimit';
+import { loginRateLimiter, registerRateLimiter } from '@/middleware/rateLimit';
 
 import { createRouter, errorResponseSchema } from '@/utils/route';
 
 const router = createRouter();
 
-router.get('/', { query: listUsersQuerySchema, response: getUsersResponseSchema, summary: 'List users' }, getUsersHandler);
+router.get('/', { query: listUsersQuerySchema, response: getUsersResponseSchema, summary: 'List users', security: true }, getUsersHandler);
 
 router.post(
   '/register',
   {
     body: registerBodySchema,
+    status: 201,
+    response: userResponseSchema,
     responses: {
-      201: { schema: userResponseSchema },
-      400: { description: 'Invalid input', schema: errorResponseSchema },
       409: { description: 'Email already registered', schema: errorResponseSchema },
       429: { description: 'Too many attempts', schema: errorResponseSchema },
     },
     summary: 'Register a new user',
   },
-  authRateLimiter,
+  registerRateLimiter,
   registerHandler,
 );
 
@@ -40,30 +40,19 @@ router.post(
   '/login',
   {
     body: loginBodySchema,
+    response: userResponseSchema,
     responses: {
-      200: { schema: userResponseSchema },
       401: { description: 'Invalid credentials', schema: errorResponseSchema },
       429: { description: 'Too many attempts', schema: errorResponseSchema },
     },
     summary: 'Authenticate user and start a session',
   },
-  authRateLimiter,
+  loginRateLimiter,
   loginHandler,
 );
 
 router.post('/logout', { response: logoutResponseSchema, summary: 'Log out and destroy the session' }, logoutHandler);
 
-router.get(
-  '/me',
-  {
-    responses: {
-      200: { schema: userResponseSchema },
-      401: { description: 'Not authenticated', schema: errorResponseSchema },
-    },
-    summary: 'Fetch authenticated user profile',
-    security: true,
-  },
-  getMeHandler,
-);
+router.get('/me', { response: userResponseSchema, summary: 'Fetch authenticated user profile', security: true }, getMeHandler);
 
 export default router;

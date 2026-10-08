@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { MountedRouter, toOpenApiPaths } from '@/utils/route';
 import { SESSION_COOKIE } from '@/utils/session';
 
-export const serveSwaggerDocs = async (router: Router, mounted: MountedRouter[]) => {
+export const serveSwaggerDocs = async (app: Router, mounted: MountedRouter[]) => {
   const swaggerUi = await import('swagger-ui-express');
   const { OpenAPIRegistry, OpenApiGeneratorV3 } = await import('@asteasolutions/zod-to-openapi');
 
@@ -20,5 +20,5 @@ export const serveSwaggerDocs = async (router: Router, mounted: MountedRouter[])
     servers: [{ url: '/', description: 'Current host' }],
   });
 
-  router.use('/docs', swaggerUi.default.serve, swaggerUi.default.setup(document));
+  app.use('/docs', swaggerUi.default.serve, swaggerUi.default.setup(document));
 };

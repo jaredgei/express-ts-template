@@ -1,10 +1,10 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
+import * as schema from '@/models';
+
 import { env } from '@/utils/env';
 import { logJson } from '@/utils/logger';
-
-import * as schema from '@/models';
 
 export const client = postgres(env.DATABASE_URL, {
   prepare: env.DATABASE_PREPARE,

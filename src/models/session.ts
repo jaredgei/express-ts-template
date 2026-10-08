@@ -13,6 +13,5 @@ export const { table: sessions } = createModel(
     tokenHash: varchar('token_hash', { length: 64 }).notNull().unique(),
     expiresAt: timestamptz('expires_at').notNull(),
   },
-  [],
-  (table) => [index('sessions_user_id_idx').on(table.userId), index('sessions_expires_at_idx').on(table.expiresAt)],
+  { indexes: (table) => [index('sessions_user_id_idx').on(table.userId), index('sessions_expires_at_idx').on(table.expiresAt)] },
 );

@@ -16,11 +16,15 @@ const baseColumns = {
 type BaseColumns = typeof baseColumns;
 type Columns = Record<string, PgColumnBuilderBase>;
 
+type ModelOptions<TName extends string, TColumns extends Columns, TPrivate extends keyof TColumns> = {
+  private?: readonly TPrivate[];
+  indexes?: (table: BuildExtraConfigColumns<TName, BaseColumns & TColumns, 'pg'>) => PgTableExtraConfigValue[];
+};
+
 export function createModel<TName extends string, TColumns extends Columns, TPrivate extends keyof TColumns = never>(
   name: TName,
   columns: TColumns,
-  privateColumns: readonly TPrivate[] = [],
-  indexes?: (table: BuildExtraConfigColumns<TName, BaseColumns & TColumns, 'pg'>) => PgTableExtraConfigValue[],
+  { private: privateColumns = [], indexes }: ModelOptions<TName, TColumns, TPrivate> = {},
 ) {
   const table = pgTable<TName, BaseColumns & TColumns>(name, { ...baseColumns, ...columns }, indexes);
   const privateSet = new Set<PropertyKey>(privateColumns);

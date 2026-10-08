@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { Request, Response } from 'express';
 import { z } from 'zod';
 
@@ -11,14 +11,19 @@ import { db } from '@/utils/database';
 import { TypedRequest } from '@/utils/route';
 import { createSession, destroySession, SESSION_COOKIE, sessionCookieOptions } from '@/utils/session';
 
+const emailSchema = z
+  .email('Invalid email address')
+  .max(255)
+  .transform((value) => value.trim().toLowerCase());
+
 export const registerBodySchema = z.object({
   name: z.string().min(1, 'Name is required').max(255),
-  email: z.email('Invalid email address').max(255),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  email: emailSchema,
+  password: z.string().min(8, 'Password must be at least 8 characters').max(256),
 });
 
 export const loginBodySchema = z.object({
-  email: z.email('Invalid email address'),
+  email: emailSchema,
   password: z.string().min(1, 'Password is required'),
 });
 
@@ -39,9 +44,9 @@ const startSession = async (req: Request, res: Response, userId: string) => {
   res.cookie(SESSION_COOKIE, await createSession(userId), sessionCookieOptions);
 };
 
-export const getUsersHandler = async (req: TypedRequest<{ query: typeof listUsersQuerySchema }>, res: Response) => {
+export const getUsersHandler = async (req: TypedRequest<{ query: typeof listUsersQuerySchema; security: true }>, res: Response) => {
   const { limit, offset } = req.query;
-  res.json({ users: await db.select(publicUserColumns).from(users).limit(limit).offset(offset) });
+  res.json({ users: await db.select(publicUserColumns).from(users).orderBy(asc(users.createdAt), asc(users.id)).limit(limit).offset(offset) });
 };
 
 export const registerHandler = async (req: TypedRequest<{ body: typeof registerBodySchema }>, res: Response) => {
@@ -57,7 +62,11 @@ export const registerHandler = async (req: TypedRequest<{ body: typeof registerB
 export const loginHandler = async (req: TypedRequest<{ body: typeof loginBodySchema }>, res: Response) => {
   const { email, password } = req.body;
 
-  const [match] = await db.select({ user: publicUserColumns, passwordHash: users.passwordHash }).from(users).where(eq(users.email, email)).limit(1);
+  const [match] = await db
+    .select({ user: publicUserColumns, passwordHash: users.passwordHash })
+    .from(users)
+    .where(eq(sql`lower(${users.email})`, email))
+    .limit(1);
   const valid = await verifyPassword(password, match?.passwordHash ?? (await dummyPasswordHash()));
   if (!match || !valid) throw new HttpError(401, 'Invalid email or password');
 

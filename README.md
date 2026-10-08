@@ -18,11 +18,12 @@ An opinionated starter for backend APIs: **Express 5 + TypeScript + PostgreSQL**
 
 ## Design decisions
 
-- **Single-declaration routes.** A route names its Zod schemas, status, summary, and auth requirement once (`createRouter`). Request validation middleware _and_ OpenAPI documentation are both derived from that one declaration — no drift between what's validated and what's documented.
-- **Model factory.** Every table is defined through `createModel`, which appends `id`/`createdAt`/`updatedAt` and derives `select`/`insert` Zod schemas, so models and their validation stay in sync.
-- **BFF session auth.** Authentication uses server-side sessions over an `httpOnly` cookie (the Backend-for-Frontend pattern) rather than JWTs in client-readable storage. Sessions live in Postgres, so they're revocable on logout and immune to token theft via XSS. This template targets web apps on a shared origin, not mobile clients.
+- **Single-declaration routes.** A route names its Zod schemas, status, summary, and auth requirement once (`createRouter`). Request validation middleware _and_ OpenAPI documentation are both derived from that one declaration — no drift between what's validated and what's documented. Handlers typed with `TypedRequest` infer `req.body`/`query`/`params` from the request schemas and `req.userId` when `security: true`.
+- **Model factory.** Every table is defined through `createModel`, which appends `id`/`createdAt`/`updatedAt` and derives a public `select` Zod schema (private columns omitted), so models and their validation stay in sync.
+- **BFF session auth.** Authentication uses server-side sessions over an `httpOnly` cookie (the Backend-for-Frontend pattern) rather than JWTs in client-readable storage. Sessions live in Postgres, so they're revocable on logout and immune to token theft via XSS. In production the cookie uses the `__Host-` prefix (requires `Secure`, `Path=/`, no `Domain`). This template targets web apps on a shared origin, not mobile clients.
 - **Passwords hashed with argon2id**, never logged or returned. `passwordHash` is excluded at the query level (`publicUserColumns`), not stripped in JS after the fact.
-- **Uniform errors.** Every error response is `{ errors: [{ message, field? }] }`. Throw `HttpError(status, message)` from handlers and middleware; unique-constraint violations become `409`; anything unexpected becomes a generic `500`.
+- **Uniform errors.** Every error response is `{ errors: [{ message, field? }] }`. Throw `HttpError(status, message, field?)` from handlers and middleware; validation failures become `400` with per-field detail, unique-constraint violations `409`, foreign-key violations `409`; anything unexpected becomes a generic `500`.
+- **CSRF defense in depth.** State-changing requests are rejected unless their `Origin` matches an allowed origin (`CORS_ORIGIN` or same-origin), on top of the `SameSite=lax` cookie.
 - **Time zone safe.** All timestamps are `timestamptz`, and `updatedAt` is bumped automatically on update.
 - **Secrets stay out of git.** `.env` is gitignored; `.env.example` documents the required keys.
 
@@ -77,10 +78,10 @@ Never commit `.env`. Add new configuration keys to `.env.example` (with safe pla
 ```
 src/
   models/       Drizzle tables via createModel, registered in index.ts
-  routes/       Route declarations via createRouter (schemas + docs)
+  routes/       Route declarations via createRouter (schemas + docs), mounted in index.ts
   handlers/     Request handlers plus their request/response Zod schemas
-  middleware/   Cross-cutting concerns (auth, errors, logging, rate limiting, validation)
-  utils/        Building blocks (auth, database, env, logger, route builder, schema factory, session, swagger)
+  middleware/   Cross-cutting concerns (auth, csrf, errors, logging, rate limiting, validation)
+  utils/        Building blocks (auth, database, env, lifecycle, logger, route builder, schema factory, session, swagger)
   scripts/      Operational scripts (migrate)
   __tests__/    Vitest unit + Supertest integration tests
   app.ts        App assembly (middleware, routes, docs, error handler)
@@ -88,25 +89,25 @@ src/
 drizzle/        Generated SQL migrations and snapshots
 ```
 
-Layered, one domain per file across layers. Adding an endpoint is a `createRouter` declaration + a handler + (if needed) a model — not raw `express.Router` wiring.
+Layered, one domain per file across layers. Adding an endpoint is a `createRouter` declaration + a handler + (if needed) a model — not raw `express.Router` wiring. A new domain adds its router to the array in `src/routes/index.ts`; `app.ts` is never touched.
 
 Modules are imported via the `@/*` alias (`@/utils/database`) rather than deep relative paths; it maps to `src/*` and is resolved by `tsx` (dev), Vitest, drizzle-kit, and `tsc-alias` (build, which rewrites the alias to relative `.js` paths in `dist/`).
 
 ## What's included
 
-- **Type-safe route builder** — `createRouter` registers a route's method, path, Zod schemas, status, summary, and auth flag once. Validation middleware is attached automatically and the OpenAPI spec is generated from the same source.
-- **Model factory** — `createModel` gives every table `id` (UUID), `createdAt`, and `updatedAt`, and derives `select`/`insert` Zod schemas via `drizzle-zod`.
+- **Type-safe route builder** — `createRouter` registers a route's method, path, Zod schemas, status, summary, and auth flag once. Validation middleware is attached automatically, the OpenAPI spec is generated from the same source, and `req.body`/`query`/`params`/`userId` are typed from the declaration via `TypedRequest`.
+- **Model factory** — `createModel` gives every table `id` (UUID), `createdAt`, and `updatedAt`, and derives a public `select` Zod schema via `drizzle-zod`. Private columns (e.g. `passwordHash`) are omitted from that schema and from `publicColumns`.
 - **Session-based auth** — register/login/logout plus a protected `/me` endpoint, backed by server-side sessions in Postgres over an `httpOnly` cookie. Sessions rotate on login and slide (cookie reissued) once past half their lifetime. Declaring `security: true` on a route attaches `authenticate` and types `req.userId` as `string`.
 - **Auto-generated API docs** — Swagger UI at `/docs`, built from the route registry, with a configured cookie security scheme.
-- **Structured logging** — one JSON-lines logger (`src/utils/logger.ts`) for access logs and app events, with request IDs propagated via `x-request-id`. Health probes are not logged.
+- **Structured logging** — one JSON-lines logger (`src/utils/logger.ts`) for access logs and app events. A request ID is attached to every request (reusing a well-formed `x-request-id` header, otherwise generating one) and echoed back. Health probes are not logged.
 - **Hardened error handling** — a global handler returns JSON, logs full detail server-side, and never leaks internal messages for 5xx responses.
-- **Health checks** — `GET /health` (liveness, used by the Docker `HEALTHCHECK`) and `GET /ready` (readiness, pings the DB; point your load balancer here).
-- **Graceful shutdown** — `SIGTERM`/`SIGINT` stop accepting connections, drain in-flight requests, and close the DB pool.
+- **Health checks** — `GET /health` (liveness, used by the Docker `HEALTHCHECK`) and `GET /ready` (readiness, pings the DB and reports 503 once shutdown begins; point your load balancer here).
+- **Graceful shutdown** — `SIGTERM`/`SIGINT` flip readiness to 503, stop accepting connections, drain in-flight requests, and close the DB pool.
 - **Container-ready** — a multi-stage [`Dockerfile`](./Dockerfile) builds a lean production image. Migrations are not run on container start; run `npm run db:migrate:prod` (e.g. `docker run <image> npm run db:migrate:prod`) as a one-off release step before rolling out, so multiple replicas never race on the schema.
 
 ## Rate limiting
 
-`login` and `register` are rate limited per client IP (10 attempts / 15 min) as a brute-force and credential-stuffing backstop. The store is in-memory and per process; when you run more than one instance, swap in a shared store such as [`rate-limit-redis`](https://github.com/express-rate-limit/rate-limit-redis) so limits hold across replicas and deploys. Broad, volumetric limiting (DDoS, scraping) belongs at the edge (load balancer / WAF / CDN), not here.
+`login` and `register` are rate limited (10 attempts / 15 min) as a brute-force and credential-stuffing backstop. `register` is keyed per client IP; `login` is keyed per IP **and** email, so stuffing a single account from many IPs is also throttled. The stores are in-memory and per process; when you run more than one instance, swap in a shared store such as [`rate-limit-redis`](https://github.com/express-rate-limit/rate-limit-redis) so limits hold across replicas and deploys. Broad, volumetric limiting (DDoS, scraping) belongs at the edge (load balancer / WAF / CDN), not here.
 
 ## Database
 
