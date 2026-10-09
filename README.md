@@ -159,7 +159,7 @@ npm run test:watch  # watch mode
 typecheck → lint → format:check → test → build
 ```
 
-A parallel job builds the Docker image. [Dependabot](./.github/dependabot.yml) opens weekly update PRs for npm (minor/patch grouped), GitHub Actions, and the Docker base image.
+A parallel job builds the Docker image.
 
 ## AI agents
 
