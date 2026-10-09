@@ -2,7 +2,7 @@ import crypto from 'crypto';
 
 import { NextFunction, Request, Response } from 'express';
 
-import { logJson } from '@/utils/logger';
+import { logJson, requestFields } from '@/utils/logger';
 
 declare module 'express-serve-static-core' {
   interface Request {
@@ -20,10 +20,8 @@ export default (req: Request, res: Response, next: NextFunction) => {
 
   res.on('finish', () => {
     logJson({
-      requestId: req.id,
+      ...requestFields(req),
       ip: req.ip,
-      method: req.method,
-      path: req.originalUrl.split('?')[0],
       status: res.statusCode,
       elapsedMs: parseFloat((performance.now() - start).toFixed(3)),
     });

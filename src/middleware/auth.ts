@@ -2,7 +2,7 @@ import { NextFunction, Request, Response } from 'express';
 
 import { HttpError } from '@/middleware/error';
 
-import { getSession, SESSION_COOKIE, sessionCookieOptions } from '@/utils/session';
+import { getSession, sessionToken, setSessionCookie } from '@/utils/session';
 
 declare module 'express-serve-static-core' {
   interface Request {
@@ -11,11 +11,11 @@ declare module 'express-serve-static-core' {
 }
 
 export const authenticate = async (req: Request, res: Response, next: NextFunction) => {
-  const token = req.cookies?.[SESSION_COOKIE];
+  const token = sessionToken(req);
   const session = token ? await getSession(token) : null;
-  if (!session) throw new HttpError(401, 'Unauthorized');
+  if (!token || !session) throw new HttpError(401, 'Unauthorized');
 
-  if (session.renewed) res.cookie(SESSION_COOKIE, token, sessionCookieOptions);
+  if (session.renewed) setSessionCookie(res, token);
   req.userId = session.userId;
   next();
 };

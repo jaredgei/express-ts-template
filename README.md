@@ -18,14 +18,16 @@ An opinionated starter for backend APIs: **Express 5 + TypeScript + PostgreSQL**
 
 ## Design decisions
 
-- **Single-declaration routes.** A route names its Zod schemas, status, summary, and auth requirement once (`createRouter`). Request validation middleware _and_ OpenAPI documentation are both derived from that one declaration — no drift between what's validated and what's documented. Handlers typed with `TypedRequest` infer `req.body`/`query`/`params` from the request schemas and `req.userId` when `security: true`.
+- **Single-declaration routes.** A route is one call: its Zod schemas, status, summary, auth requirement, declared errors, and an inline handler. Validation, typing, response serialization, and OpenAPI docs all derive from that declaration, so what's validated, returned, and documented can't drift. `req.body`/`query`/`params` (and `req.userId` with `security: true`) are inferred; the handler's return value is type-checked against `response` and parsed through it at runtime, so undeclared fields never leak.
 - **Model factory.** Every table is defined through `createModel`, which appends `id`/`createdAt`/`updatedAt` and derives a public `select` Zod schema (private columns omitted), so models and their validation stay in sync.
 - **BFF session auth.** Authentication uses server-side sessions over an `httpOnly` cookie (the Backend-for-Frontend pattern) rather than JWTs in client-readable storage. Sessions live in Postgres, so they're revocable on logout and immune to token theft via XSS. In production the cookie uses the `__Host-` prefix (requires `Secure`, `Path=/`, no `Domain`). This template targets web apps on a shared origin, not mobile clients.
 - **Passwords hashed with argon2id**, never logged or returned. `passwordHash` is excluded at the query level (`publicUserColumns`), not stripped in JS after the fact.
 - **Logs carry no request data.** Access logs record the path without its query string, and bodies are never logged. Failed database queries are logged as SQL plus the driver error via `errorFields()`, never with bound parameters (which would include emails and password hashes).
-- **Uniform errors.** Every error response is `{ errors: [{ message, field? }] }`. Throw `HttpError(status, message, field?)` from handlers and middleware; validation failures become `400` with per-field detail, unique-constraint violations `409`, foreign-key violations `409`; anything unexpected becomes a generic `500`.
+- **Uniform errors.** Every error response is `{ errors: [{ message, field? }] }`, including rate-limit `429`s and malformed-JSON `400`s. Throw `HttpError(status, message, field?)` from handlers and middleware; validation failures become `400` with per-field detail, unique-constraint violations `409`, foreign-key violations `409`; anything unexpected (including non-`Error` throws) becomes a generic `500`.
 - **CSRF defense in depth.** State-changing requests pass if the browser reports `Sec-Fetch-Site: same-origin`; otherwise they're rejected unless their `Origin` matches an allowed origin (`CORS_ORIGIN` or same-origin), on top of the `SameSite=lax` cookie.
 - **Account enumeration.** Login gives the same response and timing for unknown emails and wrong passwords. Register deliberately returns `409` for a taken email, which reveals that the account exists; that's the usual UX trade-off. If enumeration matters for your product, have register always return the same response and send a "you already have an account" email instead.
+- **Uncacheable API responses.** Every `createRouter` route sends `Cache-Control: no-store`, so user data never lands in shared caches.
+- **Strict indexing.** `noUncheckedIndexedAccess` makes `const [row] = await db...` possibly `undefined`, so "not found" can't be forgotten.
 - **Time zone safe.** All timestamps are `timestamptz`, and `updatedAt` is bumped automatically on update.
 - **Secrets stay out of git.** `.env` is gitignored; `.env.example` documents the required keys.
 
@@ -49,13 +51,16 @@ The server runs on `http://localhost:8008`. Interactive API docs are available a
 PORT=8008
 NODE_ENV=development
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/express_ts
+DATABASE_POOL_MAX=10
+DATABASE_STATEMENT_TIMEOUT_MS=10000
+DATABASE_PREPARE=true
 CORS_ORIGIN=http://localhost:5173
 TRUST_PROXY_HOPS=0
 SHUTDOWN_DRAIN_MS=0
 FRONTEND_DIR=
 ```
 
-Environment variables are validated once at startup with Zod (`src/utils/env.ts`); the process refuses to boot on invalid or missing config. `CORS_ORIGIN` is a comma-separated allowlist of browser origins (empty disables cross-origin requests); credentials are enabled so the session cookie works with a separate-origin SPA. Set `TRUST_PROXY_HOPS` to the number of reverse proxies / load balancers in front of the app (e.g. `1` behind a single ALB) so `req.ip` and rate limiting use the real client address. Never trust all hops: that lets clients spoof their IP via `X-Forwarded-For`. If TLS terminates at a proxy and `TRUST_PROXY_HOPS` is `0`, `req.protocol` is `http`, so the same-origin `Origin` fallback won't match; modern browsers still pass via `Sec-Fetch-Site`, but set `TRUST_PROXY_HOPS` correctly anyway. `SHUTDOWN_DRAIN_MS` is how long to keep serving after `SIGTERM` while `/ready` reports 503 (the Docker image sets `5000`); set it to at least your load balancer's health-check interval × unhealthy threshold. `FRONTEND_DIR` serves a built SPA with an `index.html` fallback; unknown `/api` paths still return a JSON 404. Set `DATABASE_PREPARE=false` only when connecting through a transaction-mode pooler (PgBouncer, Supabase pooler).
+Environment variables are validated once at startup with Zod (`src/utils/env.ts`); the process refuses to boot on invalid or missing config. `CORS_ORIGIN` is a comma-separated allowlist of bare http(s) origins (`https://app.example.com`, lowercase, no path or trailing slash; anything else fails startup; empty disables cross-origin requests); credentials are enabled so the session cookie works with a separate-origin SPA. Set `TRUST_PROXY_HOPS` to the number of reverse proxies / load balancers in front of the app (e.g. `1` behind a single ALB) so `req.ip` and rate limiting use the real client address. Never trust all hops: that lets clients spoof their IP via `X-Forwarded-For`. If TLS terminates at a proxy and `TRUST_PROXY_HOPS` is `0`, `req.protocol` is `http`, so the same-origin `Origin` fallback won't match; modern browsers still pass via `Sec-Fetch-Site`, but set `TRUST_PROXY_HOPS` correctly anyway. `SHUTDOWN_DRAIN_MS` is how long to keep serving after `SIGTERM` while `/ready` reports 503 (the Docker image sets `5000`); set it to at least your load balancer's health-check interval × unhealthy threshold. `FRONTEND_DIR` serves a built SPA with an `index.html` fallback for extensionless paths; missing assets (`/assets/x.js`) and unknown `/api` paths return 404. Set `DATABASE_PREPARE=false` only when connecting through a transaction-mode pooler (PgBouncer, Supabase pooler).
 
 Never commit `.env`. Add new configuration keys to `.env.example` (with safe placeholder values) and to the schema in `src/utils/env.ts`.
 
@@ -82,8 +87,7 @@ Never commit `.env`. Add new configuration keys to `.env.example` (with safe pla
 ```
 src/
   models/       Drizzle tables via createModel, registered in index.ts
-  routes/       Route declarations via createRouter (schemas + docs), mounted in index.ts
-  handlers/     Request handlers plus their request/response Zod schemas
+  routes/       One router per domain via createRouter (schemas, docs, inline handlers), listed in index.ts
   middleware/   Cross-cutting concerns (auth, csrf, errors, logging, rate limiting, validation)
   utils/        Building blocks (auth, database, env, lifecycle, logger, route builder, schema factory, session, swagger)
   scripts/      Operational scripts (migrate)
@@ -93,15 +97,34 @@ src/
 drizzle/        Generated SQL migrations and snapshots
 ```
 
-Layered, one domain per file across layers. Adding an endpoint is a `createRouter` declaration + a handler + (if needed) a model — not raw `express.Router` wiring. A new domain adds its router to the array in `src/routes/index.ts`; `app.ts` is never touched.
+Layered, one domain per file across layers. Adding an endpoint is one call plus (if needed) a model, not raw `express.Router` wiring:
+
+```ts
+const router = createRouter('/api/projects');
+
+router.get(
+  '/:id',
+  { summary: 'Fetch a project', security: true, params: z.object({ id: z.uuid() }), response: projectResponse, errors: { 404: 'Project not found' } },
+  async (req) => {
+    const [project] = await db
+      .select(publicProjectColumns)
+      .from(projects)
+      .where(and(eq(projects.id, req.params.id), eq(projects.ownerId, req.userId)));
+    if (!project) throw new HttpError(404, 'Project not found');
+    return { project };
+  },
+);
+```
+
+A new domain adds its router to the array in `src/routes/index.ts`; `app.ts` is never touched.
 
 Modules are imported via the `@/*` alias (`@/utils/database`) rather than deep relative paths; it maps to `src/*` and is resolved by `tsx` (dev), Vitest, drizzle-kit, and `tsc-alias` (build, which rewrites the alias to relative `.js` paths in `dist/`).
 
 ## What's included
 
-- **Type-safe route builder** — `createRouter` registers a route's method, path, Zod schemas, status, summary, and auth flag once. Validation middleware is attached automatically, the OpenAPI spec is generated from the same source, and `req.body`/`query`/`params`/`userId` are typed from the declaration via `TypedRequest`.
+- **Type-safe route builder** — `createRouter(prefix)` registers a route's method, path, Zod schemas, status, summary, auth flag, declared errors, and extra middleware (`use`) once. Validation is attached automatically, the handler's return value is type-checked and serialized through `response` (`204` when there is none), the OpenAPI spec is generated from the same source, and `req.body`/`query`/`params`/`userId` are inferred.
 - **Model factory** — `createModel` gives every table `id` (UUID), `createdAt`, and `updatedAt`, and derives a public `select` Zod schema via `drizzle-zod`. Private columns (e.g. `passwordHash`) are omitted from that schema and from `publicColumns`.
-- **Session-based auth** — register/login/logout plus protected `/me` and `/me/sessions` endpoints (the latter is the example of an owner-scoped, paginated list), backed by server-side sessions in Postgres over an `httpOnly` cookie. Sessions rotate on login and slide (cookie reissued) once past half their lifetime. Declaring `security: true` on a route attaches `authenticate` and types `req.userId` as `string`.
+- **Session-based auth** — register/login/logout plus protected `/me` and `/me/sessions` endpoints (the latter is the example of an owner-scoped, paginated list), backed by server-side sessions in Postgres over an `httpOnly` cookie. Sessions rotate on login and slide (cookie reissued) once past half their lifetime. Passwords are hashed with argon2id at the OWASP-recommended cost (19 MiB, 2 iterations). Declaring `security: true` on a route attaches `authenticate` and types `req.userId` as `string`.
 - **Auto-generated API docs** — Swagger UI at `/docs`, built from the route registry, with a configured cookie security scheme.
 - **Structured logging** — one JSON-lines logger (`src/utils/logger.ts`) for access logs and app events. A request ID is attached to every request (reusing a well-formed `x-request-id` header, otherwise generating one) and echoed back. Health probes are not logged.
 - **Hardened error handling** — a global handler returns JSON, logs the error and stack server-side (without query parameters), and never leaks internal messages for 5xx responses.
@@ -121,7 +144,7 @@ Schema changes flow through generated migrations: edit the model, run `npm run d
 
 ## Testing
 
-Tests live in `src/__tests__/`. Utilities are unit-tested directly; routes are integration-tested through the app with Supertest. Integration tests run against a dedicated database (`express_ts_test` by default, override with `TEST_DATABASE_URL`) that is created, migrated, and torn down automatically (`src/__tests__/global-setup.ts`). Tests create uniquely keyed data and only query what they created, so files run in parallel safely.
+Tests live in `src/__tests__/`. Utilities are unit-tested directly; routes are integration-tested through the app with Supertest. Integration tests run against a dedicated database (`express_ts_test` by default, override with `TEST_DATABASE_URL`) that is created, migrated, and torn down automatically (`src/__tests__/global-setup.ts`). Because setup drops it, the database name must end in `_test` or the run refuses to start. Tests create uniquely keyed data and only query what they created, so files run in parallel safely.
 
 ```bash
 npm run test        # run once
@@ -135,6 +158,8 @@ npm run test:watch  # watch mode
 ```
 typecheck → lint → format:check → test → build
 ```
+
+A parallel job builds the Docker image. [Dependabot](./.github/dependabot.yml) opens weekly update PRs for npm (minor/patch grouped), GitHub Actions, and the Docker base image.
 
 ## AI agents
 

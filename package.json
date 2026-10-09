@@ -1,12 +1,14 @@
 {
   "name": "express-ts",
   "version": "1.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "lint": "eslint src",
-    "build": "tsc --build tsconfig.build.json && tsc-alias -f -p tsconfig.build.json",
+    "prebuild": "node -e \"fs.rmSync('dist',{recursive:true,force:true})\"",
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "start": "node dist/index.js",
-    "setup:env": "node --input-type=commonjs -e \"const fs=require('fs');if(!fs.existsSync('.env'))fs.copyFileSync('.env.example','.env')\"",
+    "setup:env": "node -e \"fs.existsSync('.env')||fs.copyFileSync('.env.example','.env')\"",
     "predev": "npm run setup:env",
     "dev": "tsx watch --env-file=.env ./src/index.ts",
     "typecheck": "tsc --noEmit",

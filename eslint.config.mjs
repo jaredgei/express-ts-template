@@ -21,7 +21,6 @@ export default tseslint.config(
             ['^@?\\w'],
             ['^@/models(?:/|$)'],
             ['^@/routes(?:/|$)'],
-            ['^@/handlers(?:/|$)'],
             ['^@/middleware(?:/|$)'],
             ['^@/utils(?:/|$)'],
             ['^@/'],

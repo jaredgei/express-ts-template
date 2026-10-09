@@ -17,6 +17,16 @@ const envSchema = z.object({
         .split(',')
         .map((origin) => origin.trim())
         .filter(Boolean),
+    )
+    .pipe(
+      z.array(
+        z
+          .string()
+          .refine(
+            (origin) => /^https?:\/\/[^/]+$/.test(origin) && URL.canParse(origin) && new URL(origin).origin === origin,
+            'Must be a bare http(s) origin like https://app.example.com',
+          ),
+      ),
     ),
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
   SHUTDOWN_DRAIN_MS: z.coerce.number().int().min(0).default(0),

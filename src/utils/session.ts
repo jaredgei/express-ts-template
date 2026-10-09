@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 
 import { and, eq, gt, lt } from 'drizzle-orm';
+import { CookieOptions, Request, Response } from 'express';
 
 import { sessions } from '@/models/session';
 
@@ -10,13 +11,20 @@ import { isProduction } from '@/utils/env';
 export const SESSION_COOKIE = isProduction ? '__Host-sid' : 'sid';
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 
-export const sessionCookieOptions = {
+const sessionCookieOptions: CookieOptions = {
   httpOnly: true,
   secure: isProduction,
-  sameSite: 'lax' as const,
+  sameSite: 'lax',
   path: '/',
   maxAge: SESSION_TTL_MS,
 };
+
+export const sessionToken = (req: Request): string | undefined => {
+  const token: unknown = req.cookies?.[SESSION_COOKIE];
+  return typeof token === 'string' && token ? token : undefined;
+};
+
+export const setSessionCookie = (res: Response, token: string) => res.cookie(SESSION_COOKIE, token, sessionCookieOptions);
 
 const hashToken = (token: string): string => crypto.createHash('sha256').update(token).digest('hex');
 
@@ -51,6 +59,18 @@ export const getSession = async (token: string) => {
 
 export const destroySession = async (token: string): Promise<void> => {
   await db.delete(sessions).where(eq(sessions.tokenHash, hashToken(token)));
+};
+
+export const startSession = async (req: Request, res: Response, userId: string) => {
+  const previousToken = sessionToken(req);
+  if (previousToken) await destroySession(previousToken);
+  setSessionCookie(res, await createSession(userId));
+};
+
+export const endSession = async (req: Request, res: Response) => {
+  const token = sessionToken(req);
+  if (token) await destroySession(token);
+  res.clearCookie(SESSION_COOKIE, sessionCookieOptions);
 };
 
 export const deleteExpiredSessions = async (): Promise<void> => {

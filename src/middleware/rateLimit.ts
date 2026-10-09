@@ -1,5 +1,7 @@
 import { MemoryStore, Options, rateLimit } from 'express-rate-limit';
 
+import { HttpError } from '@/middleware/error';
+
 export const rateLimitStores: MemoryStore[] = [];
 
 const createLimiter = (options: Partial<Options> = {}) => {
@@ -10,7 +12,9 @@ const createLimiter = (options: Partial<Options> = {}) => {
     limit: 10,
     standardHeaders: 'draft-8',
     legacyHeaders: false,
-    message: { errors: [{ message: 'Too many attempts, please try again later' }] },
+    handler: () => {
+      throw new HttpError(429, 'Too many attempts, please try again later');
+    },
     store,
     ...options,
   });

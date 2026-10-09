@@ -3,28 +3,36 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 import type { TestProject } from 'vitest/node';
 
-let TEST_DB: string;
-let BASE_URL: string;
+let adminUrl: URL;
+let testDb: string;
+
+const withAdmin = async (run: (sql: postgres.Sql) => Promise<unknown>) => {
+  const sql = postgres(adminUrl.href, { onnotice: () => {} });
+  try {
+    await run(sql);
+  } finally {
+    await sql.end();
+  }
+};
 
 export async function setup(project: TestProject) {
-  const dbUrl = new URL(project.config.env.DATABASE_URL ?? '');
-  TEST_DB = dbUrl.pathname.slice(1);
-  BASE_URL = `postgresql://${dbUrl.username}:${dbUrl.password}@${dbUrl.host}`;
+  const testUrl = new URL(project.config.env.DATABASE_URL ?? '');
+  testDb = decodeURIComponent(testUrl.pathname.slice(1));
+  if (!testDb.endsWith('_test')) throw new Error(`Refusing to recreate "${testDb}": the test database name must end in _test`);
 
-  const admin = postgres(`${BASE_URL}/postgres`);
-  await admin.unsafe(`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${TEST_DB}' AND pid <> pg_backend_pid()`);
-  await admin.unsafe(`DROP DATABASE IF EXISTS ${TEST_DB}`);
-  await admin.unsafe(`CREATE DATABASE ${TEST_DB}`);
-  await admin.end();
+  adminUrl = new URL(testUrl);
+  adminUrl.pathname = '/postgres';
 
-  const testSql = postgres(`${BASE_URL}/${TEST_DB}`);
+  await withAdmin(async (sql) => {
+    await sql`DROP DATABASE IF EXISTS ${sql(testDb)} WITH (FORCE)`;
+    await sql`CREATE DATABASE ${sql(testDb)}`;
+  });
+
+  const testSql = postgres(testUrl.href, { max: 1, onnotice: () => {} });
   await migrate(drizzle(testSql), { migrationsFolder: './drizzle' });
   await testSql.end();
 }
 
 export async function teardown() {
-  const admin = postgres(`${BASE_URL}/postgres`);
-  await admin.unsafe(`SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${TEST_DB}' AND pid <> pg_backend_pid()`);
-  await admin.unsafe(`DROP DATABASE IF EXISTS ${TEST_DB}`);
-  await admin.end();
+  await withAdmin((sql) => sql`DROP DATABASE IF EXISTS ${sql(testDb)} WITH (FORCE)`);
 }

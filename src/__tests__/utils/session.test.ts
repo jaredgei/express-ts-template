@@ -14,6 +14,7 @@ const insertUser = async () => {
     .insert(users)
     .values({ name: 'Session User', email: `${crypto.randomUUID()}@example.com`, passwordHash: 'x' })
     .returning({ id: users.id });
+  if (!user) throw new Error('User insert returned no row');
   return user.id;
 };
 
@@ -60,7 +61,8 @@ describe('sessions', () => {
     await getSession(token);
 
     const [after] = await db.select({ expiresAt: sessions.expiresAt }).from(sessions).where(eq(sessions.userId, userId));
-    expect(after.expiresAt.getTime()).toBe(before.expiresAt.getTime());
+    expect(before).toBeDefined();
+    expect(after).toEqual(before);
   });
 
   it('slides a session once it is past the halfway mark', async () => {
@@ -76,7 +78,7 @@ describe('sessions', () => {
       .select({ expiresAt: sessions.expiresAt, updatedAt: sessions.updatedAt })
       .from(sessions)
       .where(eq(sessions.userId, userId));
-    expect(after.expiresAt.getTime()).toBeGreaterThan(nearExpiry.getTime());
-    expect(after.updatedAt.getTime()).toBeGreaterThan(lastUpdate.getTime());
+    expect(after?.expiresAt.getTime()).toBeGreaterThan(nearExpiry.getTime());
+    expect(after?.updatedAt.getTime()).toBeGreaterThan(lastUpdate.getTime());
   });
 });

@@ -2,10 +2,10 @@ import path from 'path';
 
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
-import express, { Request, Response } from 'express';
+import express, { NextFunction, Request, Response } from 'express';
 import helmet from 'helmet';
 
-import { mountedRouters } from '@/routes';
+import { routers } from '@/routes';
 
 import { verifyOrigin } from '@/middleware/csrf';
 import { errorHandler, HttpError } from '@/middleware/error';
@@ -43,19 +43,21 @@ export const createApp = async () => {
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
 
-  for (const { prefix, router } of mountedRouters) app.use(prefix, router.expressRouter);
+  for (const { prefix, router } of routers) app.use(prefix, router);
   app.use('/api', notFound);
 
   if (!isProduction) {
     const { serveSwaggerDocs } = await import('@/utils/swagger');
-    await serveSwaggerDocs(app, mountedRouters);
+    await serveSwaggerDocs(app, routers);
     logJson({ message: 'Swagger documentation available at /docs' });
   }
 
   if (env.FRONTEND_DIR) {
     const frontendDir = path.resolve(env.FRONTEND_DIR);
     app.use(express.static(frontendDir));
-    app.get('/{*splat}', (_req: Request, res: Response) => res.sendFile(path.join(frontendDir, 'index.html')));
+    app.get('/{*splat}', (req: Request, res: Response, next: NextFunction) =>
+      path.extname(req.path) ? next() : res.sendFile(path.join(frontendDir, 'index.html')),
+    );
   }
 
   app.use(notFound);
