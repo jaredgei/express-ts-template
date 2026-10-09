@@ -19,6 +19,7 @@ const envSchema = z.object({
         .filter(Boolean),
     ),
   TRUST_PROXY_HOPS: z.coerce.number().int().min(0).default(0),
+  SHUTDOWN_DRAIN_MS: z.coerce.number().int().min(0).default(0),
   FRONTEND_DIR: z.string().optional(),
 });
 

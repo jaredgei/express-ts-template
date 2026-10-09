@@ -2,7 +2,7 @@ import { DrizzleQueryError } from 'drizzle-orm';
 import { NextFunction, Request, Response } from 'express';
 import postgres from 'postgres';
 
-import { logJson } from '@/utils/logger';
+import { errorFields, logJson } from '@/utils/logger';
 
 const UNIQUE_VIOLATION = '23505';
 const FOREIGN_KEY_VIOLATION = '23503';
@@ -47,8 +47,7 @@ export const errorHandler = (error: ExpressError, req: Request, res: Response, n
   if (res.headersSent) return next(error);
 
   const httpError = toHttpError(error);
-  if (httpError.status >= 500)
-    logJson({ requestId: req.id, method: req.method, url: req.originalUrl, error: error.message, stack: error.stack }, true);
+  if (httpError.status >= 500) logJson({ requestId: req.id, method: req.method, path: req.originalUrl.split('?')[0], ...errorFields(error) }, true);
 
   res.status(httpError.status).json({ errors: httpError.errors });
 };

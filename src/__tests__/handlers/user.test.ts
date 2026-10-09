@@ -1,16 +1,20 @@
 import crypto from 'crypto';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import express, { type Express } from 'express';
 import request from 'supertest';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { sessions } from '@/models/session';
 
 import { errorHandler } from '@/middleware/error';
-import { loginRateLimitStore, registerRateLimitStore } from '@/middleware/rateLimit';
+import { rateLimitStores } from '@/middleware/rateLimit';
 
 import { client, db } from '@/utils/database';
+import { env } from '@/utils/env';
 
 import { createApp } from '@/app';
 
@@ -24,7 +28,7 @@ let testUser: { name: string; email: string; password: string };
 
 beforeEach(async () => {
   testUser = { name: 'Test User', email: `${crypto.randomUUID()}@example.com`, password: 'password123' };
-  await Promise.all([registerRateLimitStore.resetAll(), loginRateLimitStore.resetAll()]);
+  await Promise.all(rateLimitStores.map((store) => store.resetAll()));
 });
 
 afterAll(async () => {
@@ -53,6 +57,14 @@ describe('POST /api/users/register', () => {
   it('rejects duplicate emails, including concurrent ones, with 409', async () => {
     const results = await Promise.all([1, 2, 3].map(() => request(app).post('/api/users/register').send(testUser)));
     expect(results.map((res) => res.status).sort()).toEqual([201, 409, 409]);
+  });
+
+  it('normalizes the email by trimming and lowercasing', async () => {
+    const res = await request(app)
+      .post('/api/users/register')
+      .send({ ...testUser, email: `  ${testUser.email.toUpperCase()}  ` });
+    expect(res.status).toBe(201);
+    expect(res.body.user.email).toBe(testUser.email);
   });
 
   it('reports validation errors per field', async () => {
@@ -99,11 +111,32 @@ describe('POST /api/users/login', () => {
     expect((await request(app).get('/api/users/me').set('Cookie', previousCookie)).status).toBe(401);
   });
 
-  it('rate limits repeated attempts', async () => {
-    await loginRateLimitStore.resetAll();
-    const attempt = () => request(app).post('/api/users/login').send({ email: testUser.email, password: 'wrong' });
-    for (let n = 0; n < 9; n++) await attempt();
-    expect((await attempt()).status).toBe(401);
+  it('rejects an oversized password before hashing', async () => {
+    const res = await request(app)
+      .post('/api/users/login')
+      .send({ email: testUser.email, password: 'x'.repeat(257) });
+    expect(res.status).toBe(400);
+    expect(res.body.errors).toEqual([expect.objectContaining({ field: 'password' })]);
+  });
+
+  it('rate limits repeated attempts against one account', async () => {
+    const attempt = (email: string) => request(app).post('/api/users/login').send({ email, password: 'wrong' });
+    for (let n = 0; n < 9; n++) await attempt(testUser.email);
+    expect((await attempt(testUser.email)).status).toBe(401);
+    expect((await attempt(testUser.email.toUpperCase())).status).toBe(429);
+    expect((await attempt(`${crypto.randomUUID()}@example.com`)).status).toBe(401);
+  });
+
+  it('does not count successful logins toward the limit', async () => {
+    for (let n = 0; n < 11; n++) expect((await request(app).post('/api/users/login').send(testUser)).status).toBe(200);
+  });
+
+  it('rate limits one client spraying many accounts', async () => {
+    const attempt = () =>
+      request(app)
+        .post('/api/users/login')
+        .send({ email: `${crypto.randomUUID()}@example.com`, password: 'wrong' });
+    for (let n = 0; n < 50; n++) expect((await attempt()).status).toBe(401);
     expect((await attempt()).status).toBe(429);
   });
 });
@@ -152,35 +185,75 @@ describe('POST /api/users/logout', () => {
   });
 });
 
-describe('GET /api/users', () => {
-  it('paginates in a stable order for an authenticated client', async () => {
+describe('GET /api/users/me/sessions', () => {
+  it("lists only the caller's active sessions without secrets", async () => {
     const agent = request.agent(app);
     await agent.post('/api/users/register').send(testUser);
+    await request(app).post('/api/users/login').send(testUser);
+    await request(app)
+      .post('/api/users/register')
+      .send({ ...testUser, email: `${crypto.randomUUID()}@example.com` });
 
-    const res = await agent.get('/api/users?limit=2&offset=0');
+    const res = await agent.get('/api/users/me/sessions?limit=10');
     expect(res.status).toBe(200);
-    expect(res.body.users).toHaveLength(2);
-    expect(res.body.users[0]).not.toHaveProperty('passwordHash');
-    const createdAt = res.body.users.map((user: { createdAt: string }) => user.createdAt);
-    expect(createdAt).toEqual([...createdAt].sort());
+    expect(res.body.sessions).toHaveLength(2);
+    expect(res.body.sessions[0]).toEqual({
+      id: expect.any(String),
+      createdAt: expect.any(String),
+      updatedAt: expect.any(String),
+      expiresAt: expect.any(String),
+    });
   });
 
   it('rejects an invalid limit', async () => {
     const agent = request.agent(app);
     await agent.post('/api/users/register').send(testUser);
-    const res = await agent.get('/api/users?limit=999');
+    const res = await agent.get('/api/users/me/sessions?limit=999');
     expect(res.status).toBe(400);
     expect(res.body.errors).toEqual([expect.objectContaining({ field: 'limit' })]);
   });
 
   it('rejects unauthenticated requests', async () => {
-    expect((await request(app).get('/api/users')).status).toBe(401);
+    expect((await request(app).get('/api/users/me/sessions')).status).toBe(401);
   });
 });
 
 describe('Unknown API routes', () => {
   it('returns a JSON 404', async () => {
     const res = await request(app).get('/api/users/does-not-exist');
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ errors: [{ message: 'Not found' }] });
+  });
+});
+
+describe('Frontend fallback', () => {
+  let spa: Express;
+
+  let frontendDir: string;
+
+  beforeAll(async () => {
+    frontendDir = fs.mkdtempSync(path.join(os.tmpdir(), 'frontend-'));
+    fs.writeFileSync(path.join(frontendDir, 'index.html'), '<h1>spa</h1>');
+    env.FRONTEND_DIR = frontendDir;
+    try {
+      spa = await createApp();
+    } finally {
+      env.FRONTEND_DIR = undefined;
+    }
+  });
+
+  afterAll(() => {
+    fs.rmSync(frontendDir, { recursive: true });
+  });
+
+  it('serves index.html for client-side routes', async () => {
+    const res = await request(spa).get('/settings/profile');
+    expect(res.status).toBe(200);
+    expect(res.text).toContain('spa');
+  });
+
+  it('keeps unknown API routes as JSON 404s', async () => {
+    const res = await request(spa).get('/api/does-not-exist');
     expect(res.status).toBe(404);
     expect(res.body).toEqual({ errors: [{ message: 'Not found' }] });
   });
@@ -203,6 +276,16 @@ describe('Cross-origin protection', () => {
     expect(res.status).toBe(403);
   });
 
+  it('trusts Sec-Fetch-Site same-origin even when Origin does not match the proxied protocol', async () => {
+    const res = await request(app).post('/api/users/login').set('Origin', 'https://app.example').set('Sec-Fetch-Site', 'same-origin').send(testUser);
+    expect(res.status).toBe(401);
+  });
+
+  it('still checks Origin when Sec-Fetch-Site is cross-site', async () => {
+    const res = await request(app).post('/api/users/login').set('Origin', 'https://evil.example').set('Sec-Fetch-Site', 'cross-site').send(testUser);
+    expect(res.status).toBe(403);
+  });
+
   it('allows a safe GET regardless of origin', async () => {
     const res = await request(app).get('/health').set('Origin', 'https://evil.example');
     expect(res.status).toBe(200);
@@ -222,5 +305,45 @@ describe('Global error handler', () => {
     expect(res.body).toEqual({ errors: [{ message: 'Internal Server Error' }] });
     expect(res.body).not.toHaveProperty('stack');
     expect(JSON.stringify(res.body)).not.toContain('secret database credentials');
+  });
+});
+
+describe('Logging', () => {
+  let output: () => string;
+
+  beforeEach(() => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    output = () => [...log.mock.calls, ...error.mock.calls].flat().join('\n');
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('never logs credentials or query strings', async () => {
+    const password = `secret-${crypto.randomUUID()}`;
+    await request(app)
+      .post('/api/users/register')
+      .send({ ...testUser, password });
+    await request(app).post('/api/users/login').send({ email: testUser.email, password });
+    await request(app).post('/api/users/login?token=leaky-query').send({ email: testUser.email, password: 'wrong' });
+
+    expect(output()).toContain('/api/users/login');
+    expect(output()).not.toContain(password);
+    expect(output()).not.toContain('leaky-query');
+  });
+
+  it('logs failed queries without their bound parameters', async () => {
+    const failing = express();
+    failing.get('/boom', async () => {
+      await db.execute(sql`SELECT ${testUser.email}::text, 1 / 0`);
+    });
+    failing.use(errorHandler);
+
+    expect((await request(failing).get('/boom')).status).toBe(500);
+    expect(output()).toContain('division by zero');
+    expect(output()).toContain('user.test.ts');
+    expect(output()).not.toContain(testUser.email);
   });
 });

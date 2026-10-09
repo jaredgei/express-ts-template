@@ -3,7 +3,7 @@ import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 
 import { env } from '@/utils/env';
-import { logJson } from '@/utils/logger';
+import { errorFields, logJson } from '@/utils/logger';
 
 (async () => {
   logJson({ message: 'Running database migrations' });
@@ -15,6 +15,6 @@ import { logJson } from '@/utils/logger';
 
   await client.end();
 })().catch((error) => {
-  logJson({ message: 'Migration failed', error: String(error) }, true);
+  logJson({ message: 'Migration failed', ...errorFields(error) }, true);
   process.exit(1);
 });

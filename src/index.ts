@@ -1,12 +1,20 @@
+import { setTimeout as sleep } from 'timers/promises';
+
 import { client, testConnection } from '@/utils/database';
 import { env } from '@/utils/env';
 import { lifecycle } from '@/utils/lifecycle';
-import { logJson } from '@/utils/logger';
+import { errorFields, logJson } from '@/utils/logger';
 import { deleteExpiredSessions } from '@/utils/session';
 
 import { createApp } from '@/app';
 
 const SESSION_CLEANUP_INTERVAL_MS = 1000 * 60 * 60;
+const SHUTDOWN_TIMEOUT_MS = 10000;
+
+const fail = (message: string, error: unknown) => {
+  logJson({ message, ...errorFields(error) }, true);
+  process.exit(1);
+};
 
 (async () => {
   try {
@@ -15,36 +23,38 @@ const SESSION_CLEANUP_INTERVAL_MS = 1000 * 60 * 60;
 
     await deleteExpiredSessions();
     const cleanup = setInterval(
-      () => deleteExpiredSessions().catch((error) => logJson({ message: 'Session cleanup failed', error: String(error) }, true)),
+      () => deleteExpiredSessions().catch((error) => logJson({ message: 'Session cleanup failed', ...errorFields(error) }, true)),
       SESSION_CLEANUP_INTERVAL_MS,
     );
     cleanup.unref();
 
-    const server = app.listen(env.PORT, () => logJson({ message: `Server is listening on port ${env.PORT}` }));
+    const server = app.listen(env.PORT, (error) => {
+      if (error) return fail('Server failed to listen', error);
+      logJson({ message: `Server is listening on port ${env.PORT}` });
+    });
 
-    const shutdown = (signal: string) => {
+    const shutdown = async (signal: NodeJS.Signals) => {
       if (lifecycle.shuttingDown) return;
       lifecycle.shuttingDown = true;
       logJson({ message: `${signal} received, shutting down` });
       clearInterval(cleanup);
-      const force = setTimeout(() => process.exit(1), 10000);
-      force.unref();
+      setTimeout(() => process.exit(1), env.SHUTDOWN_DRAIN_MS + SHUTDOWN_TIMEOUT_MS).unref();
+
+      // Keep serving while /ready reports 503 so the load balancer deregisters this instance before connections are refused.
+      await sleep(env.SHUTDOWN_DRAIN_MS);
       server.close(async () => {
         try {
           await client.end({ timeout: 5 });
         } catch (error) {
-          logJson({ message: 'Failed to close database pool', error: String(error) }, true);
-        } finally {
-          clearTimeout(force);
-          process.exit(0);
+          logJson({ message: 'Failed to close database pool', ...errorFields(error) }, true);
         }
+        process.exit(0);
       });
     };
 
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
-    process.on('SIGINT', () => shutdown('SIGINT'));
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
   } catch (error) {
-    logJson({ message: 'Startup failed', error: String(error) }, true);
-    process.exit(1);
+    fail('Startup failed', error);
   }
 })();

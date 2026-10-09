@@ -77,10 +77,12 @@ import { db } from '@/utils/database';
 - Read configuration only through the validated `env` object in `src/utils/env.ts`, never `process.env` directly in feature code. New config keys are added to the Zod schema there and to `.env.example`.
 - Auth is server-side sessions over an `httpOnly` cookie (BFF pattern), stored in Postgres and revocable on logout. No tokens in client-readable storage. In production the cookie name is `__Host-sid`; `sessionCookieOptions` is the single source of cookie flags.
 - Passwords are hashed with argon2id. Never log or return `passwordHash`; exclude it at the query level (`publicUserColumns`), not in JS after the fact.
+- Never log request bodies, query strings, cookies, or headers. Log errors with `...errorFields(error)`, never `error.message`/`String(error)` directly: `DrizzleQueryError` messages embed bound parameters.
 - Validate all external input with Zod at the route boundary. Never trust `req.body`/`req.query`/`req.params` unvalidated. Normalize comparable identifiers (e.g. lowercase/trim email) in the schema so stored and queried values match.
-- State-changing requests are Origin-checked (`verifyOrigin`) on top of `SameSite=lax`. CSRF safety assumes the server only parses `application/json`; if you add `express.urlencoded()` or trust sibling subdomains, revisit this.
+- State-changing requests are checked by `verifyOrigin` (`Sec-Fetch-Site: same-origin`, else an allowed `Origin`) on top of `SameSite=lax`. CSRF safety assumes the server only parses `application/json`; if you add `express.urlencoded()` or trust sibling subdomains, revisit this.
 - The global error handler returns generic messages for 500s; never leak internal error details to clients. Error bodies are always `{ errors: [{ message, field? }] }`. Throw `HttpError(status, message, field?)`; validation middleware throws `ValidationError` with per-field detail. Do not write error responses by hand in middleware or handlers.
-- Credential endpoints use their rate limiter (`registerRateLimiter`/`loginRateLimiter`). Do not skip it in tests; reset `registerRateLimitStore`/`loginRateLimitStore` instead.
+- Credential endpoints use their rate limiters (`registerRateLimiter`; `loginIpRateLimiter` + `loginEmailRateLimiter`). Create new limiters with `createLimiter` so their store is registered. Do not skip them in tests; reset every entry in `rateLimitStores` instead.
+- Scope every query over user-owned data to `req.userId`. Never expose cross-user listings (e.g. all users) without an authorization check.
 
 ## Database
 

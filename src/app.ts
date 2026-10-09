@@ -16,10 +16,15 @@ import { env, isProduction } from '@/utils/env';
 import { lifecycle } from '@/utils/lifecycle';
 import { logJson } from '@/utils/logger';
 
+const notFound = () => {
+  throw new HttpError(404, 'Not found');
+};
+
 export const createApp = async () => {
   const app = express();
 
   app.set('trust proxy', env.TRUST_PROXY_HOPS);
+  app.use(helmet());
 
   app.get('/health', (_req: Request, res: Response) => res.json({ status: 'ok' }));
   app.get('/ready', async (_req: Request, res: Response) => {
@@ -33,13 +38,13 @@ export const createApp = async () => {
   });
 
   app.use(logger);
-  app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGIN.length ? env.CORS_ORIGIN : false, credentials: true }));
   app.use(verifyOrigin);
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
 
   for (const { prefix, router } of mountedRouters) app.use(prefix, router.expressRouter);
+  app.use('/api', notFound);
 
   if (!isProduction) {
     const { serveSwaggerDocs } = await import('@/utils/swagger');
@@ -53,9 +58,7 @@ export const createApp = async () => {
     app.get('/{*splat}', (_req: Request, res: Response) => res.sendFile(path.join(frontendDir, 'index.html')));
   }
 
-  app.use(() => {
-    throw new HttpError(404, 'Not found');
-  });
+  app.use(notFound);
 
   app.use(errorHandler);
 

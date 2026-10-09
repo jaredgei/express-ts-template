@@ -23,7 +23,7 @@ export default (req: Request, res: Response, next: NextFunction) => {
       requestId: req.id,
       ip: req.ip,
       method: req.method,
-      url: req.originalUrl || req.url,
+      path: req.originalUrl.split('?')[0],
       status: res.statusCode,
       elapsedMs: parseFloat((performance.now() - start).toFixed(3)),
     });

@@ -1,8 +1,8 @@
 import {
   getMeHandler,
-  getUsersHandler,
-  getUsersResponseSchema,
-  listUsersQuerySchema,
+  listSessionsHandler,
+  listSessionsQuerySchema,
+  listSessionsResponseSchema,
   loginBodySchema,
   loginHandler,
   logoutHandler,
@@ -12,13 +12,11 @@ import {
   userResponseSchema,
 } from '@/handlers/user';
 
-import { loginRateLimiter, registerRateLimiter } from '@/middleware/rateLimit';
+import { loginEmailRateLimiter, loginIpRateLimiter, registerRateLimiter } from '@/middleware/rateLimit';
 
 import { createRouter, errorResponseSchema } from '@/utils/route';
 
 const router = createRouter();
-
-router.get('/', { query: listUsersQuerySchema, response: getUsersResponseSchema, summary: 'List users', security: true }, getUsersHandler);
 
 router.post(
   '/register',
@@ -47,12 +45,19 @@ router.post(
     },
     summary: 'Authenticate user and start a session',
   },
-  loginRateLimiter,
+  loginIpRateLimiter,
+  loginEmailRateLimiter,
   loginHandler,
 );
 
 router.post('/logout', { response: logoutResponseSchema, summary: 'Log out and destroy the session' }, logoutHandler);
 
 router.get('/me', { response: userResponseSchema, summary: 'Fetch authenticated user profile', security: true }, getMeHandler);
+
+router.get(
+  '/me/sessions',
+  { query: listSessionsQuerySchema, response: listSessionsResponseSchema, summary: "List the authenticated user's active sessions", security: true },
+  listSessionsHandler,
+);
 
 export default router;

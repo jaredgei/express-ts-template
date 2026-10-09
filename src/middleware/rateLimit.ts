@@ -1,20 +1,23 @@
-import { ipKeyGenerator, MemoryStore, Options, rateLimit } from 'express-rate-limit';
+import { MemoryStore, Options, rateLimit } from 'express-rate-limit';
 
-const base: Partial<Options> = {
-  windowMs: 15 * 60 * 1000,
-  limit: 10,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-  message: { errors: [{ message: 'Too many attempts, please try again later' }] },
+export const rateLimitStores: MemoryStore[] = [];
+
+const createLimiter = (options: Partial<Options> = {}) => {
+  const store = new MemoryStore();
+  rateLimitStores.push(store);
+  return rateLimit({
+    windowMs: 15 * 60 * 1000,
+    limit: 10,
+    standardHeaders: 'draft-8',
+    legacyHeaders: false,
+    message: { errors: [{ message: 'Too many attempts, please try again later' }] },
+    store,
+    ...options,
+  });
 };
 
-export const registerRateLimitStore = new MemoryStore();
-export const loginRateLimitStore = new MemoryStore();
+export const registerRateLimiter = createLimiter();
 
-export const registerRateLimiter = rateLimit({ ...base, store: registerRateLimitStore });
+export const loginIpRateLimiter = createLimiter({ limit: 50, skipSuccessfulRequests: true });
 
-export const loginRateLimiter = rateLimit({
-  ...base,
-  store: loginRateLimitStore,
-  keyGenerator: (req) => `${ipKeyGenerator(req.ip ?? '')}:${typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : ''}`,
-});
+export const loginEmailRateLimiter = createLimiter({ keyGenerator: (req) => req.body.email, skipSuccessfulRequests: true });

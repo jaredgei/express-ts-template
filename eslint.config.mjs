@@ -11,9 +11,6 @@ export default tseslint.config(
     files: ['**/*.{ts,tsx}'],
     plugins: { 'simple-import-sort': simpleImportSort },
     rules: {
-      'semi': ['error', 'always'],
-      'indent': ['error', 2],
-      'quotes': ['error', 'single'],
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' }],
       'simple-import-sort/exports': 'error',
       'simple-import-sort/imports': [
